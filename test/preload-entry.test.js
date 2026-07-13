@@ -38,6 +38,6 @@ test('sandboxed manager preload exposes only list, delete and deletion events', 
 
   assert.equal(exposed.key, 'qqLocalRecall');
   assert.deepEqual(Object.keys(exposed.value).sort(), [
-    'deleteConversations', 'listConversations', 'onRecordsDeleted',
+    'chooseStoragePath', 'deleteConversations', 'getStoragePath', 'listConversations', 'onRecordsDeleted',
   ]);
 });

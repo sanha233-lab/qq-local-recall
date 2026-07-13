@@ -75,3 +75,34 @@ test('ConversationStore hashes peer keys instead of using them as paths', () => 
   assert.match(files[0], /^[a-f0-9]{64}\.json$/);
   assert.equal(fs.existsSync(path.join(store.rootDir, 'escape')), false);
 });
+
+test('ConversationStore displays a readable friend label instead of an internal UID', () => {
+  const store = new ConversationStore(tempDir());
+  store.save({
+    msgId: 'm1',
+    peer: { key: 'friend:u_raw', type: 'friend', id: 'u_raw', name: 'u_raw' },
+    recallTime: '1',
+    message: {
+      msgId: 'm1',
+      senderUin: '3358089740',
+      elements: [{ elementType: 1, textElement: { content: 'hello' } }],
+    },
+  });
+
+  const row = store.listConversations()[0];
+
+  assert.equal(row.name, '好友（QQ号：3358089740）');
+  assert.equal(row.id, '3358089740');
+});
+
+test('ConversationStore copies records when changing to a new local root', () => {
+  const store = new ConversationStore(tempDir());
+  const selected = path.join(tempDir(), 'new-records');
+  store.save(record('m1'));
+
+  store.changeRoot(selected);
+
+  assert.equal(store.rootDir, path.resolve(selected));
+  assert.equal(store.get('m1').message.msgId, 'm1');
+  assert.equal(store.listConversations()[0].count, 1);
+});

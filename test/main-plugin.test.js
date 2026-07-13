@@ -29,6 +29,7 @@ function fakeElectron() {
   }
   return {
     ipcMain: { handle(channel, callback) { handlers.set(channel, callback); } },
+    dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) },
     BrowserWindow,
     handlers,
     windows,
@@ -112,4 +113,29 @@ test('main plugin opens an isolated local manager window', async () => {
   assert.equal(manager.loadedFile, path.resolve('manager.html'));
   assert.equal(manager.options.webPreferences.contextIsolation, true);
   assert.equal(manager.options.webPreferences.nodeIntegration, false);
+});
+
+test('main plugin changes the record directory through the native folder picker', async () => {
+  const electron = fakeElectron();
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-main-'));
+  const selected = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-selected-')), 'records-root');
+  electron.dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] });
+  const plugin = createPlugin({
+    electron,
+    dataDir,
+    managerHtmlPath: 'manager.html',
+    managerPreloadPath: 'manager-preload.js',
+  });
+  plugin.start();
+  plugin.store.save({
+    msgId: 'm1', peer: { key: 'friend:u1', type: 'friend', id: 'u1', name: '好友' },
+    recallTime: '1', message: message([{ elementType: 1, textElement: { content: 'hello' } }]),
+  });
+
+  const choose = await electron.handlers.get('qq-local-recall:choose-storage-path')({});
+
+  assert.deepEqual(choose, { canceled: false, path: path.resolve(selected) });
+  assert.equal(await electron.handlers.get('qq-local-recall:get-storage-path')({}), path.resolve(selected));
+  assert.equal(fs.existsSync(path.join(selected, 'records')), true);
+  assert.equal(fs.existsSync(path.join(dataDir, 'storage.json')), true);
 });

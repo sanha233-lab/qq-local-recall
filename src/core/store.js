@@ -3,9 +3,27 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const { isLocalStoragePath } = require('./storage-path');
 
 function peerFileName(peerKey) {
   return `${crypto.createHash('sha256').update(String(peerKey), 'utf8').digest('hex')}.json`;
+}
+
+function peerAccount(entry) {
+  if (entry.peer.uin) return String(entry.peer.uin);
+  for (const record of entry.records) {
+    const account = record?.message?.peerUin || record?.message?.senderUin;
+    if (account) return String(account);
+  }
+  return '';
+}
+
+function peerDisplayName(entry) {
+  const rawName = String(entry.peer.name || '').trim();
+  if (entry.peer.type === 'group') return rawName || '群聊';
+  if (rawName && !/^u_[A-Za-z0-9_-]+$/.test(rawName)) return rawName;
+  const account = peerAccount(entry);
+  return account ? `好友（QQ号：${account}）` : '好友';
 }
 
 class ConversationStore {
@@ -83,6 +101,24 @@ class ConversationStore {
     return this.byMessageId.get(String(messageId));
   }
 
+  changeRoot(newRootDir) {
+    const nextRoot = path.resolve(newRootDir);
+    if (!isLocalStoragePath(nextRoot)) throw new TypeError('storage path must be an absolute local path');
+    if (nextRoot === this.rootDir) return this.rootDir;
+    const nextRecordsDir = path.join(nextRoot, 'records');
+    fs.mkdirSync(nextRecordsDir, { recursive: true });
+    for (const name of fs.readdirSync(this.recordsDir)) {
+      if (!name.endsWith('.json')) continue;
+      const source = path.join(this.recordsDir, name);
+      const destination = path.join(nextRecordsDir, name);
+      if (!fs.existsSync(destination)) fs.copyFileSync(source, destination);
+    }
+    this.rootDir = nextRoot;
+    this.recordsDir = nextRecordsDir;
+    this.load();
+    return this.rootDir;
+  }
+
   listConversations() {
     return [...this.conversations.entries()].map(([peerKey, entry]) => {
       const stats = fs.statSync(entry.filePath);
@@ -93,8 +129,8 @@ class ConversationStore {
       return {
         peerKey,
         type: entry.peer.type,
-        id: entry.peer.id,
-        name: entry.peer.name,
+        id: entry.peer.type === 'friend' ? (peerAccount(entry) || entry.peer.id) : entry.peer.id,
+        name: peerDisplayName(entry),
         count: entry.records.length,
         sizeBytes: stats.size,
         lastRecallTime: last ? String(last) : '',

@@ -1,4 +1,4 @@
-# Security and dependency audit
+# 安全与依赖审计
 
 ## Candidate review
 
@@ -14,7 +14,7 @@
 - `package.json` 没有 `dependencies` 或 `devDependencies`。
 - `src/` 禁止 `fetch`、WebSocket、HTTP/HTTPS/TCP/UDP 模块、子进程、`eval`、动态函数和原生 `.node/.dll` 引用。
 - 不处理网络包，不调用 QQ 服务器接口，不补下载媒体。
-- 数据文件名由 SHA-256 生成，删除 API 只接受 `friend:` 或 `group:` 开头的会话键。
+- 数据文件名由 SHA-256 生成，删除 API 只接受 `friend:` 或 `group:` 开头的会话键；存储路径只能通过主进程原生文件夹选择器修改。
 - 损坏的数据文件不会自动删除，只记录诊断并跳过。
 
 ## Loader assets

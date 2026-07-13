@@ -6,6 +6,8 @@ const CHANNELS = Object.freeze({
   deleted: 'qq-local-recall:records-deleted',
   open: 'qq-local-recall:open-manager',
   recovered: 'qq-local-recall:recovered',
+  storagePath: 'qq-local-recall:get-storage-path',
+  chooseStoragePath: 'qq-local-recall:choose-storage-path',
 });
 
 function createPreloadApi(ipcRenderer, { includeOpen = false, includeRecovered = false } = {}) {

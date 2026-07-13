@@ -28,6 +28,10 @@ button { height: 38px; border: 1px solid transparent; border-radius: 7px; paddin
 button.danger { background: var(--danger); color: white; }
 button:disabled { opacity: .45; cursor: default; }
 button:not(:disabled):active { transform: translateY(1px); }
+.storage-location { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 20px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.storage-copy { display: grid; gap: 5px; min-width: 0; }
+.storage-label { color: var(--muted); font-size: 12px; }
+.storage-copy code { overflow: hidden; color: inherit; font: 12px/1.4 "Cascadia Mono", Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
 .status { margin: 24px 0; color: var(--muted); text-align: center; }
 .table-wrap { overflow: auto; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); }
 table { width: 100%; border-collapse: collapse; table-layout: fixed; }
@@ -49,4 +53,3 @@ th:last-child, td:last-child { width: 148px; }
   th { background: #242932; }
   tbody tr:hover { background: rgb(100 162 255 / 7%); }
 }
-

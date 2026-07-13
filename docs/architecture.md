@@ -1,6 +1,6 @@
-# Architecture
+# 架构说明
 
-## Data flow
+## 数据流
 
 1. 主进程包装 QQ `webContents.send`，只读取本地 Electron IPC 中的消息列表。
 2. 支持的消息进入 10,000 条先进先出内存缓存；媒体消息不会进入缓存。
@@ -8,12 +8,12 @@
 4. 首次成功恢复时，按好友或群聊写入独立 JSON 文件；写入采用临时文件加原子重命名。
 5. QQ 重启后，撤回灰条再次出现时，从本地记录恢复消息。
 
-## Storage
+## 存储
 
-数据目录为 `LiteLoaderQQNT/data/qq_local_recall/records`。会话文件名是 `SHA-256(peerType:peerId).json`，文件内容包含 `schemaVersion: 1`、会话快照和撤回记录数组。
+默认数据目录为 `LiteLoaderQQNT/data/qq_local_recall/records`。设置页面可以选择新的本机绝对目录；插件会复制现有记录、原子保存路径配置，并在重启后继续使用新目录。旧目录不会自动删除。会话文件名是 `SHA-256(peerType:peerId).json`，文件内容包含 `schemaVersion: 1`、会话快照和撤回记录数组。
 
 管理窗口只获得会话统计和固定删除接口，不能传入或读取任意文件路径。删除一个会话时删除对应 JSON 文件、持久化索引和内存候选消息。
 
-## Renderer
+## 渲染层
 
 渲染层接收已恢复消息 ID 和已删除消息 ID。每条恢复消息会在对应消息行正上方显示居中的 QQ 原生风格灰色提示条；消息节点因滚动或切换会话重建时，渲染层按消息 ID 重新定位并去重，不显示独立弹窗。动态名称、号码和统计值全部使用 `textContent` 写入；管理窗口启用 `contextIsolation`、`sandbox` 并禁用 `nodeIntegration`。
