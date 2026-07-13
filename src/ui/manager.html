@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'none'; connect-src 'none'; object-src 'none'; base-uri 'none'">
+  <title>QQ 本地撤回记录</title>
+  <link rel="stylesheet" href="./manager.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <p class="eyebrow">LOCAL STORAGE</p>
+        <h1>撤回记录管理</h1>
+        <p class="subtitle">记录只保存在本机。选择好友或群聊后，可整组删除。</p>
+      </div>
+      <div class="summary" aria-live="polite">
+        <strong id="total-size">0 B</strong>
+        <span id="total-count">0 个会话</span>
+      </div>
+    </header>
+
+    <section class="toolbar" aria-label="筛选与删除">
+      <label class="search">
+        <span>搜索</span>
+        <input id="search" type="search" placeholder="好友、群名或号码" autocomplete="off">
+      </label>
+      <button id="delete" class="danger" type="button" disabled>删除所选</button>
+    </section>
+
+    <p id="status" class="status" role="status">正在读取本地记录</p>
+    <div class="table-wrap" hidden>
+      <table>
+        <thead>
+          <tr>
+            <th class="check"><input id="select-all" type="checkbox" aria-label="选择当前显示的全部会话"></th>
+            <th>好友或群聊</th>
+            <th>类型</th>
+            <th class="number">记录</th>
+            <th class="number">占用</th>
+            <th>最后撤回</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </main>
+  <script type="module" src="./manager.mjs"></script>
+</body>
+</html>
+

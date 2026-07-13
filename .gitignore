@@ -1,0 +1,19 @@
+# Local installation backups and temporary staging
+delivery/backup/
+delivery/.staging/
+
+# Internal work logs may contain local machine paths
+progress.md
+task_plan.md
+docs/superpowers/
+
+# Superseded friend bundle held by another process; use the AutoDetect archive
+delivery/QQ-Local-Recall-1.2.3-For-Friend.zip
+delivery/QQ-Local-Recall-1.2.3-For-Friend.sha256
+
+# Temporary diagnostics and editor/runtime artifacts
+*.tmp
+*.log
+dom-diagnostic-*.json
+dom-structure-*.json
+all-webcontents-*.json
