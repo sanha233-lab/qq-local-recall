@@ -10,6 +10,8 @@ const elements = {
   selectAll: document.getElementById('select-all'),
   totalSize: document.getElementById('total-size'),
   totalCount: document.getElementById('total-count'),
+  storagePath: document.getElementById('storage-path'),
+  changeStorage: document.getElementById('change-storage'),
 };
 
 function visibleRows() {
@@ -88,6 +90,14 @@ async function load() {
   }
 }
 
+async function loadStoragePath() {
+  try {
+    elements.storagePath.textContent = await window.qqLocalRecall.getStoragePath();
+  } catch {
+    elements.storagePath.textContent = '读取失败';
+  }
+}
+
 elements.search.addEventListener('input', () => { state.query = elements.search.value; render(); });
 elements.selectAll.addEventListener('change', () => {
   for (const row of visibleRows()) {
@@ -105,7 +115,20 @@ elements.delete.addEventListener('click', async () => {
   await window.qqLocalRecall.deleteConversations([...state.selected]);
   await load();
 });
+elements.changeStorage.addEventListener('click', async () => {
+  elements.changeStorage.disabled = true;
+  try {
+    const result = await window.qqLocalRecall.chooseStoragePath();
+    if (!result?.canceled) {
+      elements.storagePath.textContent = result.path;
+      await load();
+    }
+  } catch (error) {
+    elements.storagePath.textContent = `修改失败：${error?.message || String(error)}`;
+  } finally {
+    elements.changeStorage.disabled = false;
+  }
+});
 window.qqLocalRecall.onRecordsDeleted(() => load());
 
-await load();
-
+await Promise.all([load(), loadStoragePath()]);

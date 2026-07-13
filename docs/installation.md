@@ -1,4 +1,4 @@
-# Installation and rollback
+# 安装与回滚
 
 ## Supported environment
 
@@ -46,4 +46,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -DryRun
 powershell -NoProfile -ExecutionPolicy Bypass -File .\rollback.ps1
 ```
 
-默认恢复最近一次备份，移除本插件，但保留撤回数据和 LiteLoader 文件。需要一并删除本插件数据时添加 `-RemoveData`；需要删除本次新建的 LiteLoader 目录时添加 `-RemoveLoader`。
+默认恢复最近一次备份，移除本插件，但保留撤回数据和 LiteLoader 文件。`-RemoveData` 只删除默认 LiteLoader 数据目录；如果曾选择自定义记录目录，请按需手动处理该目录。需要删除本次新建的 LiteLoader 目录时添加 `-RemoveLoader`。
+
+## 修改记录保存位置
+
+打开 QQ 设置中的“管理记录”，在管理窗口的“记录位置”区域点击“修改位置”，选择本机磁盘目录。现有记录会复制到新目录，旧目录不会自动删除；重启 QQ 后仍使用新目录。

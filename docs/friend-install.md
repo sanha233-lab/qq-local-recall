@@ -1,4 +1,4 @@
-# QQ 本地防撤回 1.2.3 安装教程
+# QQ 本地防撤回 1.3.0 安装教程
 
 ## 适用版本
 
@@ -54,6 +54,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\install.ps1" `
 
 安装完成后启动 QQ，在设置列表中可以看到“QQ 本地防撤回”。
 
+在“管理记录”窗口的“记录位置”区域可以查看当前保存目录，并选择新的本机磁盘目录。已有记录会复制到新目录，旧目录不会自动删除。
+
 ## 回滚
 
 完全退出 QQ 后，在本文件夹运行：
@@ -62,7 +64,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\install.ps1" `
 powershell -NoProfile -ExecutionPolicy Bypass -File ".\rollback.ps1"
 ```
 
-回滚会恢复安装前的 QQ 加载配置、加载器和插件。默认不会删除本地撤回记录；如果确认也要删除记录，可额外使用 `-RemoveData`。
+回滚会恢复安装前的 QQ 加载配置、加载器和插件。默认不会删除本地撤回记录；`-RemoveData` 只删除默认 LiteLoader 数据目录，自定义记录目录需要按需手动处理。
 
 ## 常见问题
 

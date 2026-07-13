@@ -11,7 +11,7 @@
   <main>
     <header>
       <div>
-        <p class="eyebrow">LOCAL STORAGE</p>
+        <p class="eyebrow">本地存储</p>
         <h1>撤回记录管理</h1>
         <p class="subtitle">记录只保存在本机。选择好友或群聊后，可整组删除。</p>
       </div>
@@ -27,6 +27,14 @@
         <input id="search" type="search" placeholder="好友、群名或号码" autocomplete="off">
       </label>
       <button id="delete" class="danger" type="button" disabled>删除所选</button>
+    </section>
+
+    <section class="storage-location" aria-label="记录存储位置">
+      <div class="storage-copy">
+        <span class="storage-label">记录位置</span>
+        <code id="storage-path">正在读取</code>
+      </div>
+      <button id="change-storage" type="button">修改位置</button>
     </section>
 
     <p id="status" class="status" role="status">正在读取本地记录</p>
@@ -49,4 +57,3 @@
   <script type="module" src="./manager.mjs"></script>
 </body>
 </html>
-

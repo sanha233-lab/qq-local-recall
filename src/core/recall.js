@@ -56,12 +56,18 @@ function getPeer(message) {
   const type = Number(message?.chatType) === 2 ? 'group' : 'friend';
   const id = String(message?.peerUid || message?.peerUin || '');
   if (!id) return null;
-  return {
+  const name = String(
+    message?.peerName || message?.peerRemark || message?.senderNick || message?.senderMemberName || '',
+  );
+  const peer = {
     key: `${type}:${id}`,
     type,
     id,
-    name: String(message?.peerName || message?.peerRemark || id),
+    name,
   };
+  const uin = String(message?.peerUin || message?.senderUin || '');
+  if (uin) peer.uin = uin;
+  return peer;
 }
 
 function recoverRecall(recallMessage, originalMessage, options = {}) {

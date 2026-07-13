@@ -13,7 +13,7 @@ New-Item -ItemType Directory -Path $PluginRoot -Force | Out-Null
 foreach ($item in @('manifest.json', 'LICENSE', 'NOTICE.md', 'README.md', 'src')) {
     Copy-Item -LiteralPath (Join-Path $Root $item) -Destination $PluginRoot -Recurse
 }
-$PluginZip = Join-Path $Delivery 'QQ-Local-Recall-v1.2.3.zip'
+$PluginZip = Join-Path $Delivery 'QQ-Local-Recall-v1.3.0.zip'
 Remove-Item -LiteralPath $PluginZip -Force -ErrorAction SilentlyContinue
 Compress-Archive -LiteralPath $PluginRoot -DestinationPath $PluginZip -CompressionLevel Optimal
 
@@ -22,7 +22,7 @@ New-Item -ItemType Directory -Path $SourceRoot -Force | Out-Null
 foreach ($item in @('manifest.json', 'package.json', 'LICENSE', 'NOTICE.md', 'README.md', 'src', 'test', 'scripts', 'docs')) {
     Copy-Item -LiteralPath (Join-Path $Root $item) -Destination $SourceRoot -Recurse
 }
-$SourceZip = Join-Path $Delivery 'QQ-Local-Recall-source-v1.2.3.zip'
+$SourceZip = Join-Path $Delivery 'QQ-Local-Recall-source-v1.3.0.zip'
 Remove-Item -LiteralPath $SourceZip -Force -ErrorAction SilentlyContinue
 Compress-Archive -LiteralPath $SourceRoot -DestinationPath $SourceZip -CompressionLevel Optimal
 
