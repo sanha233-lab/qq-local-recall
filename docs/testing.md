@@ -7,6 +7,7 @@
 - Static audit：生产源码无网络、子进程、动态执行和原生模块引用。
 - Package validation：Manifest V4、注入文件、CSP、零依赖和交付 ZIP 内容。
 - 存储路径测试：路径原子配置、无效/UNC 路径回退、记录目录迁移、管理页面显示和文件夹选择 IPC。
+- 管理窗口 Preload 回归测试：确认使用独立的 `qqLocalRecallManager` 桥接，避免 LiteLoader 全局 Preload 覆盖 `chooseStoragePath`。
 - 好友显示测试：内部 `u_...` UID 转换为“好友（QQ号）”可读标签。
 
 ## Live acceptance
@@ -32,6 +33,12 @@
 - Preload 回归测试确认主 QQ 页面和沙箱管理窗口不依赖本地模块加载。
 - 完整执行 `rollback.ps1 -RemoveData -RemoveLoader`，确认恢复官方 `application.asar` 入口、移除加载桥接和加载器目录，原 QQ 能启动。
 - 再次执行修正版 `install.ps1`，确认兼容补丁、插件、加载入口和桥接哈希正确，QQ 启动未出现 JavaScript Error 窗口，插件数据目录成功创建。
+
+## 1.3.1 管理窗口回归证据, 2026-07-14
+
+- 根因定位：LiteLoader 会把插件主 Preload 注入所有 BrowserWindow；管理窗口原先再次注册 `window.qqLocalRecall`，被先加载的主 QQ API 占用，导致 `chooseStoragePath` 缺失。
+- 修复验证：管理 Preload 改用独立的 `window.qqLocalRecallManager`，43 项 Node 测试、静态安全审核和包校验全部通过。
+- 实机验证：QQ `9.9.32-50969` 重启后管理窗口正常显示记录位置；点击“修改位置”成功打开原生文件夹选择器，取消后窗口无报错，数据目录保持不变。
 - 1.2.0 覆盖部署后，15 个已安装源码文件与工作区逐文件 SHA-256 一致，QQ 启动后存在 8 个正常进程；原生风格提示位置仍需第二账号执行一次新消息撤回完成视觉验收。
 - 1.2.0 实机验收确认消息恢复成功但原生提示未出现；DOM 诊断证明 QQ 9.9.32 消息行结构为 `.ml-item#原始消息ID`，而 1.2.0 错误查找 `#ml-消息ID`。1.2.1 增加真实结构回归测试并修正定位器。
 - 1.2.1 稳定性复核发现提示节点已存在时仍重复 `insertBefore`，会被全局 `MutationObserver` 反复触发并造成 QQ 未响应；1.2.2 增加“不重复移动”回归测试并修复。

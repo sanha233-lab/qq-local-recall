@@ -11,5 +11,6 @@ test('manager UI exposes the current storage path and change-location action', a
   assert.match(html, /id="change-storage"/);
   assert.match(script, /getStoragePath/);
   assert.match(script, /chooseStoragePath/);
+  assert.match(script, /window\.qqLocalRecallManager/);
   assert.match(style, /\.storage-location/);
 });

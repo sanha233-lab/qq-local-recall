@@ -12,7 +12,7 @@ $BridgeHash = '4BB8CD08D7E96BD085FA2AFA46D7B36E3F312A6C4D633363411EF763449D700F'
 $BundleRoot = $PSScriptRoot
 $LoaderArchive = Join-Path $BundleRoot 'vendor\LiteLoaderQQNT-1.4.1.zip'
 $BridgeDll = Join-Path $BundleRoot 'vendor\dbghelp_x64-1.1.2.dll'
-$PluginArchive = Join-Path $BundleRoot 'QQ-Local-Recall-v1.3.0.zip'
+$PluginArchive = Join-Path $BundleRoot 'QQ-Local-Recall-v1.3.1.zip'
 
 function Get-QQInstallCandidates {
     $paths = @('D:\QQ', 'C:\QQ')

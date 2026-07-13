@@ -1,6 +1,7 @@
 import { filterRows, formatBytes, formatTime } from './manager-model.mjs';
 
 const state = { rows: [], selected: new Set(), query: '' };
+const api = window.qqLocalRecallManager;
 const elements = {
   search: document.getElementById('search'),
   delete: document.getElementById('delete'),
@@ -80,7 +81,7 @@ async function load() {
   elements.status.hidden = false;
   elements.status.textContent = '正在读取本地记录';
   try {
-    state.rows = await window.qqLocalRecall.listConversations();
+    state.rows = await api.listConversations();
     state.selected.clear();
     render();
   } catch {
@@ -92,7 +93,7 @@ async function load() {
 
 async function loadStoragePath() {
   try {
-    elements.storagePath.textContent = await window.qqLocalRecall.getStoragePath();
+    elements.storagePath.textContent = await api.getStoragePath();
   } catch {
     elements.storagePath.textContent = '读取失败';
   }
@@ -112,13 +113,13 @@ elements.delete.addEventListener('click', async () => {
   const confirmed = window.confirm(`确定删除 ${selectedRows.length} 个会话的本地撤回记录（${formatBytes(bytes)}）吗？此操作不可恢复。`);
   if (!confirmed) return;
   elements.delete.disabled = true;
-  await window.qqLocalRecall.deleteConversations([...state.selected]);
+  await api.deleteConversations([...state.selected]);
   await load();
 });
 elements.changeStorage.addEventListener('click', async () => {
   elements.changeStorage.disabled = true;
   try {
-    const result = await window.qqLocalRecall.chooseStoragePath();
+    const result = await api.chooseStoragePath();
     if (!result?.canceled) {
       elements.storagePath.textContent = result.path;
       await load();
@@ -129,6 +130,6 @@ elements.changeStorage.addEventListener('click', async () => {
     elements.changeStorage.disabled = false;
   }
 });
-window.qqLocalRecall.onRecordsDeleted(() => load());
+api.onRecordsDeleted(() => load());
 
 await Promise.all([load(), loadStoragePath()]);

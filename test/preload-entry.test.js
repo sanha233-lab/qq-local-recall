@@ -24,7 +24,7 @@ test('preload entry exposes the complete fixed API without local module loading'
   ]);
 });
 
-test('sandboxed manager preload exposes only list, delete and deletion events', () => {
+test('sandboxed manager preload exposes a separate API to avoid the global QQ preload collision', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui', 'manager-preload.js'), 'utf8');
   let exposed;
   const contextBridge = { exposeInMainWorld(key, value) { exposed = { key, value }; } };
@@ -36,7 +36,7 @@ test('sandboxed manager preload exposes only list, delete and deletion events', 
     },
   }, { filename: 'manager-preload.js' });
 
-  assert.equal(exposed.key, 'qqLocalRecall');
+  assert.equal(exposed.key, 'qqLocalRecallManager');
   assert.deepEqual(Object.keys(exposed.value).sort(), [
     'chooseStoragePath', 'deleteConversations', 'getStoragePath', 'listConversations', 'onRecordsDeleted',
   ]);
