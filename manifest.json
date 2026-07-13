@@ -1,0 +1,19 @@
+{
+  "manifest_version": 4,
+  "type": "extension",
+  "name": "QQ 本地防撤回",
+  "slug": "qq_local_recall",
+  "description": "仅在本机保留文字、QQ 表情和回复消息，并提供按会话清理功能。",
+  "version": "1.2.3",
+  "authors": [
+    {
+      "name": "Local delivery based on xh321/LiteLoaderQQNT-Anti-Recall"
+    }
+  ],
+  "platform": ["win32"],
+  "injects": {
+    "main": "./src/main.js",
+    "preload": "./src/preload.js",
+    "renderer": "./src/renderer.mjs"
+  }
+}

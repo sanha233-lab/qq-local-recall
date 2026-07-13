@@ -1,0 +1,12 @@
+{
+  "name": "qq-local-recall",
+  "version": "1.2.3",
+  "private": true,
+  "description": "Local-only anti-recall plugin for LiteLoaderQQNT",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test",
+    "check": "node scripts/static-audit.js && node scripts/validate-package.js",
+    "package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package.ps1"
+  }
+}
