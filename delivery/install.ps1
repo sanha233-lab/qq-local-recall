@@ -6,7 +6,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$ExpectedQQVersion = '9.9.32-50969'
+$ExpectedQQVersion = '9.9.32-51246'
+$ExpectedQQMain = './application.asar/app_launcher/index.js'
+$LoaderQQMain = './app_launcher/LiteLoaderQQNT.js'
+$ExpectedApplicationHash = '65338430A607D4F936CF2A4B497BE5DEC22DCAB1ED9845F2F4E513BBD7421A62'
 $LoaderHash = '3B2D9B7214BDFEF16D5007B1F277A9F70688785BA11FC03EF091AA8214CDC343'
 $BridgeHash = '4BB8CD08D7E96BD085FA2AFA46D7B36E3F312A6C4D633363411EF763449D700F'
 $BundleRoot = $PSScriptRoot
@@ -92,11 +95,20 @@ if ($versionConfig.curVersion -ne $ExpectedQQVersion) {
 }
 $AppPath = Join-Path $QQInstallPath "versions\$ExpectedQQVersion\resources\app"
 $PackagePath = Join-Path $AppPath 'package.json'
+$ApplicationPath = Join-Path $AppPath 'application.asar'
 $LauncherPath = Join-Path $AppPath 'app_launcher\LiteLoaderQQNT.js'
 $TargetBridge = Join-Path $QQInstallPath 'dbghelp.dll'
 $PluginPath = Join-Path $LiteLoaderPath 'plugins\qq_local_recall'
 
+if (-not (Test-Path -LiteralPath $PackagePath -PathType Leaf)) { throw "Missing file: $PackagePath" }
+$qqPackage = Get-Content -LiteralPath $PackagePath -Raw | ConvertFrom-Json
+if ($qqPackage.main -notin @($ExpectedQQMain, $LoaderQQMain)) {
+    throw "Unexpected QQ main entry: $($qqPackage.main). Expected: $ExpectedQQMain"
+}
+Assert-FileHash $ApplicationPath $ExpectedApplicationHash
+
 Write-Host "QQ version:       $ExpectedQQVersion"
+Write-Host "Official entry:   $ExpectedQQMain"
 Write-Host "LiteLoader path:  $LiteLoaderPath"
 Write-Host "Plugin path:      $PluginPath"
 Write-Host 'QQ.exe replacement: disabled'

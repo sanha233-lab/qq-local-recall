@@ -3,7 +3,7 @@
 ## 适用版本
 
 - Windows x64
-- QQ `9.9.32-50969`
+- QQ `9.9.32-51246`
 - 好友和群聊均支持
 
 如果 QQ 是其他版本，安装脚本会停止并提示版本不匹配，不会强行修改 QQ。
@@ -35,7 +35,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\install.ps1" -DryRun
 powershell -NoProfile -ExecutionPolicy Bypass -File ".\install.ps1"
 ```
 
-脚本会检查常见安装目录和 Windows QQ 卸载注册表，只接受版本为 `9.9.32-50969` 的目录。
+脚本会检查常见安装目录和 Windows QQ 卸载注册表，只接受版本为 `9.9.32-51246` 的目录，并校验该版本的官方 ASAR 入口。
 
 如果检测到多个 QQ，或者你想强制指定目录，使用 `-QQInstallPath`：
 
@@ -78,7 +78,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\rollback.ps1"
 
 ### QQ 更新后怎么办？
 
-新版本 QQ 不会自动修改。重新运行安装前先执行 `-DryRun`；如果版本不再是 `9.9.32-50969`，请不要强行安装，等待兼容检查。
+新版本 QQ 不会自动修改。重新运行安装前先执行 `-DryRun`；如果版本不再是 `9.9.32-51246`，请不要强行安装，等待兼容检查。
 
 ### 记录保存在哪里？
 

@@ -4,12 +4,12 @@
 
 - Windows x64
 - QQ installation root: auto-detected; use `-QQInstallPath` to override
-- QQ kernel: `9.9.32-50969`
+- QQ kernel: `9.9.32-51246`
 - LiteLoader destination: `%USERPROFILE%\Documents\LiteLoaderQQNT`
 
 ## Install
 
-完全退出所有 QQ 进程，然后在交付目录运行。脚本会自动检查常见 QQ 目录和 Windows 卸载注册表，只接受版本为 `9.9.32-50969` 的候选目录：
+完全退出所有 QQ 进程，然后在交付目录运行。脚本会自动检查常见 QQ 目录和 Windows 卸载注册表，只接受版本为 `9.9.32-51246` 的候选目录：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
@@ -23,11 +23,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -QQInstallPath
 
 脚本将执行以下固定动作：
 
-1. 校验 QQ 当前版本和两个官方运行时文件的 SHA-256。
+1. 校验 QQ 当前版本、`application.asar`、官方入口 `./application.asar/app_launcher/index.js` 和两个官方运行时文件的 SHA-256。
 2. 在交付目录 `backup` 下备份 `package.json`、已有加载入口、已有 `dbghelp.dll` 和已有插件。
 3. 安装 LiteLoaderQQNT 1.4.1 与 `qq_local_recall` 插件。
 4. 对 LiteLoader 1.4.1 应用一行 Node 新版兼容修正：优先读取 `Dirent.parentPath`，旧运行时回退到 `Dirent.path`。
-5. 将当前版本的 `package.json` 主入口改为本地 LiteLoader 启动入口。
+5. 将当前版本的 `package.json` 主入口改为本地 LiteLoader 启动入口；LiteLoader 随后转发到 51246 的官方 ASAR 入口。
 6. 将官方 QQNTFileVerifyPatch 的 x64 加载桥接复制为 `$QQInstallPath\dbghelp.dll`。
 
 脚本不会替换 `QQ.exe`，也不会启动或登录 QQ。
