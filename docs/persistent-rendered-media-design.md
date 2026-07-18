@@ -24,15 +24,15 @@
 
 ### 方案 C：原始字节优先，Canvas PNG 降级
 
-先核实 QQ 实际节点的 `src/currentSrc`、协议、MIME 和可读性。仅对本地来源读取原始字节并保留 GIF/WebP 等动画；原始字节不可读但 Canvas 可绘制时保存 PNG。该方案满足动画优先和稳定降级要求，作为正式设计。
+实机确认 QQ 动画表情节点为 `pic-element--gif img`，使用本机 `appimg:` 协议。仅对该固定协议读取原始字节并保留 GIF/WebP 等动画；原始字节不可读但 Canvas 可绘制时保存 PNG。该方案满足动画优先和稳定降级要求，作为正式设计。
 
 ## 数据流
 
 1. 渲染层在撤回前继续保存最多 500 条 DOM 快照，并读取目标媒体节点的 `currentSrc/src`、MIME、尺寸和动画候选信息。
-2. 捕获入口只接受 `data:`、`blob:` 或经实机确认属于 QQ 本机资源的固定协议；`http:`、`https:` 及协议相对地址立即拒绝。
+2. 捕获入口只接受经实机确认的 `appimg:` 本机资源协议；其他协议不读取原始字节，`http:`、`https:` 及协议相对地址立即拒绝。
 3. 原始字节可读时保持原 MIME；不可读时尝试 Canvas 导出 `image/png`。捕获结果限制为单项不超过 20 MiB。
-4. 渲染层通过固定 IPC 发送 `{ messageId, mimeType, bytes }`，不接受任意输出路径。
-5. 主进程计算 SHA-256，以 `media/<sha256>.<ext>` 原子写入当前记录根目录，并返回只含哈希、相对路径、MIME、大小和降级标记的媒体引用。
+4. 渲染层通过固定 IPC 发送 `{ messageId, mediaIndex, sourceUrl }`；`sourceUrl` 只允许 `appimg:`。Canvas 降级发送 `{ messageId, mediaIndex, mimeType: 'image/png', bytes }`，两种输入都不接受任意输出路径。
+5. 主进程对 `appimg:` 解码后的路径执行 QQ `Pic/Emoji` 目录范围校验，对原始文件或 PNG 字节按魔数识别格式并计算 SHA-256，以 `media/<sha256>.<ext>` 原子写入当前记录根目录，返回只含哈希、相对路径、MIME、大小和降级标记的媒体引用。
 6. 处理器将媒体引用附加到对应撤回记录；纯媒体 `memoryOnly` 消息在媒体落盘成功后允许持久化，混合消息在原有文字记录上补充媒体引用。
 7. QQ 重启后，处理器从记录恢复媒体引用；渲染层通过固定 IPC 读取按哈希校验过的媒体字节，创建页面内可显示的本地 URL，并在节点销毁后释放临时 URL。
 
@@ -55,9 +55,16 @@
 ## 安全边界
 
 - 生产源码不得访问 `http:` 或 `https:`，不得下载或补取远端资源。
-- IPC 只传消息 ID、受限 MIME、有限大小字节和内容寻址引用；主进程不接受渲染层传入任意文件路径。
+- IPC 只传消息 ID、媒体序号、受限的 `appimg:` URL，或有限大小的 PNG 字节；主进程不接受渲染层传入目标路径、哈希或任意文件路径。
 - 单项 20 MiB 上限、固定 MIME 白名单和 SHA-256 校验同时应用于写入与读取。
 - 临时实机诊断只记录协议、MIME、尺寸和可读性，不记录或上传用户媒体内容；诊断代码不进入仓库和交付包。
+
+## QQ 51246 实机证据
+
+- 动画表情节点路径包含 `pic-element pic-element--gif`，媒体节点为 `<img>`。
+- `currentSrc` 为 `appimg://D/QQ/Tencent%20Files/.../nt_data/Emoji/emoji-recv/2026-07/Ori/<id>.jpg`，原始字节和 Canvas 均可读。
+- 样本响应 MIME 为 `image/jpeg`、扩展名为 `.jpg`，但文件头为 `GIF89a`；正式实现必须按魔数识别真实格式，不能信任扩展名或响应 MIME。
+- 样本原始 GIF 为 1,119,103 字节，静态 PNG 降级为 71,146 字节，均低于单项 20 MiB 上限。
 
 ## 错误处理
 
