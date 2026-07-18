@@ -107,16 +107,22 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
     function patchedSend(channel, ...args) {
       let recoveredIds = [];
       let attemptedIds = [];
+      let messageKinds = {};
+      let recallNotices = {};
       try {
         const processed = processor.processIpcArguments(args);
         recoveredIds = processed.recoveredIds;
         attemptedIds = processed.attemptedIds;
+        messageKinds = processed.messageKinds;
+        recallNotices = processed.recallNotices;
       } catch (error) {
         logger.error?.('[QQ Local Recall] IPC processing failed:', error);
       }
       const result = originalSend.call(contents, channel, ...args);
       if (recoveredIds.length) {
-        originalSend.call(contents, RECOVERED_CHANNEL, { messageIds: recoveredIds, attemptedIds });
+        originalSend.call(contents, RECOVERED_CHANNEL, {
+          messageIds: recoveredIds, attemptedIds, messageKinds, recallNotices,
+        });
       }
       return result;
     }

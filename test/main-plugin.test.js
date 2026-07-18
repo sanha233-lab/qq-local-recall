@@ -71,7 +71,10 @@ test('main plugin patches QQ IPC and emits recovered message ids', () => {
 
   assert.equal(recalled.payload.msgList[0].elements[0].textElement.content, 'hello');
   assert.deepEqual(chat.sent.at(-1), ['qq-local-recall:recovered', {
-    messageIds: ['m1'], attemptedIds: ['m1'],
+    messageIds: ['m1'], attemptedIds: ['m1'], messageKinds: { m1: 'message' },
+    recallNotices: { m1: {
+      kind: 'message', operatorName: '对方', operatorRole: 0, senderName: '好友',
+    } },
   }]);
 });
 

@@ -1,12 +1,17 @@
 import { requestManagerOpen } from './ui/open-manager.mjs';
 import {
+  rememberPictureContent,
+  restorePictureContent,
+} from './ui/picture-memory.mjs';
+import {
   findMessageContent,
   findMessageRow,
   placeRecallNotice,
   removeRecallNotice,
 } from './ui/recall-notice.mjs';
 
-const recalledMessageIds = new Set();
+const recalledMessages = new Map();
+const pictureSnapshots = new Map();
 
 function installStyle() {
   if (document.getElementById('qq-local-recall-style')) return;
@@ -27,16 +32,30 @@ function installStyle() {
   document.head.appendChild(style);
 }
 
-function markMessage(messageId) {
-  return placeRecallNotice(document, findMessageRow(document, messageId), messageId);
+function markMessage(messageId, detail) {
+  return placeRecallNotice(document, findMessageRow(document, messageId), messageId, detail);
+}
+
+function rememberVisiblePictures() {
+  const nodes = document.querySelectorAll?.('[id$="-msgContainerMsgContent"], [id$="-msgContent"]') || [];
+  for (const node of nodes) {
+    const id = String(node.id || '').replace(/-(?:msgContainerMsgContent|msgContent)$/, '');
+    if (id) rememberPictureContent(pictureSnapshots, id, node.parentElement || node);
+  }
 }
 
 function markVisibleMessages() {
-  for (const messageId of recalledMessageIds) markMessage(messageId);
+  rememberVisiblePictures();
+  for (const [messageId, detail] of recalledMessages) {
+    if (detail.memoryOnly === true) {
+      restorePictureContent(pictureSnapshots, messageId, findMessageContent(document, messageId));
+    }
+    markMessage(messageId, detail);
+  }
 }
 
 function replaceDeletedMessage(messageId) {
-  recalledMessageIds.delete(String(messageId));
+  recalledMessages.delete(String(messageId));
   removeRecallNotice(document, String(messageId));
   const target = findMessageContent(String(messageId));
   if (!target) return;
@@ -47,8 +66,14 @@ function replaceDeletedMessage(messageId) {
 }
 
 installStyle();
+rememberVisiblePictures();
 window.qqLocalRecall?.onRecovered?.(payload => {
-  for (const messageId of payload?.messageIds || []) recalledMessageIds.add(String(messageId));
+  for (const messageId of payload?.messageIds || []) {
+    const id = String(messageId);
+    recalledMessages.set(id, payload?.recallNotices?.[id] || {
+      kind: payload?.messageKinds?.[id] === 'picture' ? 'picture' : 'message',
+    });
+  }
   setTimeout(markVisibleMessages, 0);
   setTimeout(markVisibleMessages, 120);
 });
