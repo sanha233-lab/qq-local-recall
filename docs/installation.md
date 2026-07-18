@@ -11,7 +11,7 @@
 
 完全退出所有 QQ 进程，然后在交付目录运行。脚本会自动检查常见 QQ 目录和 Windows 卸载注册表，只接受版本为 `9.9.32-51246` 的候选目录：
 
-1.3.6 正式交付只提供基础插件 ZIP、源码 ZIP、安装/回滚脚本、`vendor` 和 `SHA256SUMS.txt`，不生成朋友分发包；仓库内旧朋友包仅作为历史版本保留。
+1.3.7 正式交付只提供基础插件 ZIP、源码 ZIP、安装/回滚脚本、`vendor` 和 `SHA256SUMS.txt`，不生成朋友分发包；仓库内旧朋友包仅作为历史版本保留。
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1

@@ -133,14 +133,13 @@ class RecallProcessor {
     const stored = this.store.get(messageId);
     const cached = this.cache.get(messageId);
     const persistableOriginal = sanitizeMessage(stored?.message || cached);
-    const original = stored?.message
-      ? persistableOriginal
-      : sanitizeMessage(cached, { allowMissingMedia: true });
+    const currentSessionOriginal = sanitizeMessage(cached, { allowMissingMedia: true });
+    const original = currentSessionOriginal || persistableOriginal;
     const recovered = recoverRecall(recallMessage, original, { preventSelf: this.preventSelf });
     if (!recovered) return null;
     const mediaCount = message => (message?.elements || [])
       .filter(element => element?.picElement || element?.marketFaceElement).length;
-    if (!stored && mediaCount(original) > mediaCount(persistableOriginal)) {
+    if (mediaCount(original) > mediaCount(persistableOriginal)) {
       recovered.qqLocalRecall.memoryOnly = true;
     }
 
@@ -156,7 +155,7 @@ class RecallProcessor {
         });
       }
     }
-    this.cache.delete(messageId);
+    if (recovered.qqLocalRecall.memoryOnly !== true) this.cache.delete(messageId);
     return recovered;
   }
 
