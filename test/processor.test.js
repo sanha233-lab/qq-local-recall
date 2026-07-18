@@ -351,6 +351,22 @@ test('RecallProcessor marks mixed text and missing media for renderer replay whi
   assert.deepEqual(store.get('m1').message.elements.map(element => element.elementType), [1]);
 });
 
+test('RecallProcessor reopens mixed text with its memory-only media in the current session', () => {
+  const store = makeStore();
+  const processor = new RecallProcessor({ store });
+  processor.processEvent({ cmdName: 'onRecvMsg', payload: { msgList: [textMessage({ elements: [
+    { elementType: 1, textElement: { content: 'keep text' } },
+    { elementType: 2, picElement: { picSubType: 1, sourcePath: 'missing-expression.png' } },
+  ] })] } });
+  processor.processEvent({ cmdName: 'onMsgInfoListUpdate', payload: { msgList: [recallMessage()] } });
+  const reopened = { msgList: [recallMessage()] };
+
+  const result = processor.processFullList(reopened);
+
+  assert.deepEqual(reopened.msgList[0].elements.map(element => element.elementType), [1, 2]);
+  assert.equal(result.recallNotices.m1.memoryOnly, true);
+});
+
 test('RecallProcessor exposes administrator and original sender notice data', () => {
   const processor = new RecallProcessor({ store: makeStore() });
   processor.processEvent({ cmdName: 'onRecvMsg', payload: { msgList: [textMessage({
@@ -401,6 +417,21 @@ test('RecallProcessor replays pictures without a local file in the current sessi
   assert.equal(event.payload.msgList[0].elements[0].picElement.sourcePath, 'x');
   assert.equal(result.recallNotices.m1.memoryOnly, true);
   assert.equal(processor.store.get('m1'), undefined);
+});
+
+test('RecallProcessor replays a memory-only picture after the conversation is reopened', () => {
+  const processor = new RecallProcessor({ store: makeStore() });
+  processor.processEvent({ cmdName: 'onRecvMsg', payload: { msgList: [textMessage({
+    elements: [{ elementType: 2, picElement: { sourcePath: 'x' } }],
+  })] } });
+  processor.processEvent({ cmdName: 'onMsgInfoListUpdate', payload: { msgList: [recallMessage()] } });
+  const reopened = { msgList: [recallMessage()] };
+
+  const result = processor.processFullList(reopened);
+
+  assert.deepEqual(result.recoveredIds, ['m1']);
+  assert.equal(reopened.msgList[0].elements[0].picElement.sourcePath, 'x');
+  assert.equal(result.recallNotices.m1.memoryOnly, true);
 });
 
 test('RecallProcessor clears memory candidates for deleted conversations', () => {

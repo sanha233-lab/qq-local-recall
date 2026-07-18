@@ -57,7 +57,7 @@ function markVisibleMessages() {
 function replaceDeletedMessage(messageId) {
   recalledMessages.delete(String(messageId));
   removeRecallNotice(document, String(messageId));
-  const target = findMessageContent(String(messageId));
+  const target = findMessageContent(document, String(messageId));
   if (!target) return;
   const notice = document.createElement('span');
   notice.className = 'qq-local-recall-deleted';
