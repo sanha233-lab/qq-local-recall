@@ -7,6 +7,7 @@ const root = path.resolve(__dirname, '..', 'src');
 const forbidden = [
   { name: 'network module', pattern: /require\(['"](?:node:)?(?:http|https|net|tls|dgram)['"]\)/ },
   { name: 'network API', pattern: /\b(?:fetch|WebSocket|EventSource)\s*\(/ },
+  { name: 'network URL literal', pattern: /https?:/i },
   { name: 'child process', pattern: /require\(['"](?:node:)?child_process['"]\)/ },
   { name: 'dynamic evaluation', pattern: /\b(?:eval|Function)\s*\(/ },
   { name: 'native module reference', pattern: /\.(?:node|dll)\b/i },
@@ -32,5 +33,4 @@ if (failures.length) {
   console.error(failures.join('\n'));
   process.exit(1);
 }
-console.log('Static audit passed: no forbidden network, process, dynamic-code, or native-module usage in src/.');
-
+console.log('Static audit passed: no forbidden network APIs, URL literals, process, dynamic-code, or native-module usage in src/.');

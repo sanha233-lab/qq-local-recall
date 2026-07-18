@@ -1,5 +1,10 @@
 # Findings
 
+## 1.3.8 persistent rendered media acceptance
+- QQ 仍会把静态自定义表情标为 `picSubType=1`/“动画表情”；首个 `memoryOnly` 实机样本真实原件为 JPEG，内容寻址副本与 QQ `Ori` 字节哈希完全一致。
+- 真动画样本扩展名为 `.jpg`，真实魔数为 `GIF89a`，再次证明格式必须以魔数判定。QQ 原件在撤回前有效时沿用既有本地路径，不进入只针对 `memoryOnly` 的副本 IPC。
+- 完整退出重启和切换会话等待 10 秒后，用户确认真动画继续显示并播放；隔离根中的共享引用/最后引用清理也已通过。
+
 - 本机当前 QQ 内核版本为 `9.9.32-50969`，Windows x64；启动器位于 `D:\QQ\QQ.exe`。
 - 当前未检测到 LiteLoaderQQNT、QwQNT 或相关插件数据目录。
 - `MeiYongAI/QQNT-Toolbox` v0.6.3 明确声明实机验证 QQ 9.9.32-50969，但为 AGPL-3.0 且包含大量无关功能和原生模块。

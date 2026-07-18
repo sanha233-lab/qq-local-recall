@@ -9,6 +9,7 @@ const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'u
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 
 if (manifest.manifest_version !== 4) throw new Error('manifest_version must be 4');
+if (manifest.version !== pkg.version) throw new Error('manifest and package versions must match');
 for (const relative of Object.values(manifest.injects || {})) {
   if (!fs.existsSync(path.join(root, relative))) throw new Error(`missing inject file: ${relative}`);
 }
@@ -41,7 +42,12 @@ for (const relative of expectedDelivery) {
   if (checksums.get(relative) !== actual) throw new Error(`delivery checksum mismatch: ${relative}`);
 }
 const pluginZip = fs.readFileSync(path.join(delivery, expectedDelivery[0]));
-for (const relative of [...Object.values(manifest.injects || {}), 'src/ui/picture-memory.mjs']) {
+for (const relative of [
+  ...Object.values(manifest.injects || {}),
+  'src/core/media-store.js',
+  'src/ui/media-capture.mjs',
+  'src/ui/picture-memory.mjs',
+]) {
   const archiveRelative = relative.replace(/^\.\//, '').replaceAll('\\', '/');
   const archiveEntries = [
     `QQ-Local-Recall/${archiveRelative}`,
@@ -52,4 +58,4 @@ for (const relative of [...Object.values(manifest.injects || {}), 'src/ui/pictur
   }
 }
 
-console.log('Package validation passed: Manifest V4, offline CSP, delivery entries, and SHA-256 checks verified.');
+console.log('Package validation passed: Manifest V4, matching version, offline CSP, media entries, and SHA-256 checks verified.');

@@ -10,10 +10,13 @@ const {
 } = require('./recall');
 
 class RecallProcessor {
-  constructor({ store, cacheLimit = 10000, preventSelf = false }) {
+  constructor({ store, mediaStore = null, cacheLimit = 10000, preventSelf = false }) {
     if (!store) throw new TypeError('store is required');
     this.store = store;
-    this.cache = new CandidateCache(cacheLimit);
+    this.mediaStore = mediaStore;
+    this.pendingMedia = new Map();
+    this.pendingMediaLimit = cacheLimit;
+    this.cache = new CandidateCache(cacheLimit, messageId => this.pendingMedia.delete(messageId));
     this.preventSelf = preventSelf;
   }
 
@@ -132,7 +135,8 @@ class RecallProcessor {
     const messageId = getOriginalMessageId(recallMessage, info);
     const stored = this.store.get(messageId);
     const cached = this.cache.get(messageId);
-    const persistableOriginal = sanitizeMessage(stored?.message || cached);
+    const storedMessage = this.resolveStoredMedia(stored?.message);
+    const persistableOriginal = sanitizeMessage(storedMessage || cached);
     const currentSessionOriginal = sanitizeMessage(cached, { allowMissingMedia: true });
     const original = currentSessionOriginal || persistableOriginal;
     const recovered = recoverRecall(recallMessage, original, { preventSelf: this.preventSelf });
@@ -141,6 +145,11 @@ class RecallProcessor {
       .filter(element => element?.picElement || element?.marketFaceElement).length;
     if (mediaCount(original) > mediaCount(persistableOriginal)) {
       recovered.qqLocalRecall.memoryOnly = true;
+      this.pendingMedia.delete(messageId);
+      this.pendingMedia.set(messageId, recovered);
+      while (this.pendingMedia.size > this.pendingMediaLimit) {
+        this.pendingMedia.delete(this.pendingMedia.keys().next().value);
+      }
     }
 
     const peer = getPeer(recovered);
@@ -159,8 +168,80 @@ class RecallProcessor {
     return recovered;
   }
 
+  resolveStoredMedia(message) {
+    if (!message) return null;
+    const prepared = sanitizeMessage(message, { requireLocalMedia: false, allowMissingMedia: true });
+    if (!prepared) return null;
+    prepared.elements = prepared.elements.flatMap(element => {
+      const reference = element.qqLocalRecallMedia;
+      if (!reference) return [element];
+      if (!this.mediaStore) return [];
+      try {
+        const absolutePath = this.mediaStore.resolve(reference);
+        if (element.picElement) {
+          element.picElement.sourcePath = absolutePath;
+          element.picElement.filePath = absolutePath;
+          element.picElement.fileSize = reference.sizeBytes;
+        } else if (element.marketFaceElement) {
+          if (reference.staticFallback) element.marketFaceElement.staticFacePath = absolutePath;
+          else element.marketFaceElement.dynamicFacePath = absolutePath;
+        }
+        return [element];
+      } catch {
+        return [];
+      }
+    });
+    return prepared.elements.length ? prepared : null;
+  }
+
+  persistRenderedMedia({ messageId, mediaIndex, reference }) {
+    const id = String(messageId);
+    const pending = this.pendingMedia.get(id);
+    if (!pending || !this.mediaStore) throw new Error('rendered media is not pending');
+    const mediaElements = pending.elements.filter(element => element?.picElement || element?.marketFaceElement);
+    const element = mediaElements[mediaIndex];
+    if (!element) throw new RangeError('media index is out of range');
+    const absolutePath = this.mediaStore.resolve(reference);
+    element.qqLocalRecallMedia = {
+      sha256: reference.sha256,
+      relativePath: reference.relativePath,
+      mimeType: reference.mimeType,
+      sizeBytes: reference.sizeBytes,
+      staticFallback: reference.staticFallback === true,
+    };
+    if (element.picElement) {
+      element.picElement.sourcePath = absolutePath;
+      element.picElement.filePath = absolutePath;
+      element.picElement.fileSize = reference.sizeBytes;
+    } else if (reference.staticFallback === true) {
+      element.marketFaceElement.staticFacePath = absolutePath;
+    } else {
+      element.marketFaceElement.dynamicFacePath = absolutePath;
+    }
+    const peer = getPeer(pending);
+    const persistable = sanitizeMessage(pending);
+    if (!peer || !persistable) throw new Error('rendered media record is invalid');
+    persistable.qqLocalRecall = pending.qqLocalRecall;
+    this.store.upsert({
+      msgId: id,
+      peer,
+      recallTime: String(pending.qqLocalRecall?.recallTime || ''),
+      message: persistable,
+    });
+    if (mediaElements.every(item => item.qqLocalRecallMedia)) {
+      this.pendingMedia.delete(id);
+      this.cache.delete(id);
+    }
+    return reference;
+  }
+
   clearPeers(peerKeys) {
-    for (const peerKey of peerKeys) this.cache.clearPeer(String(peerKey));
+    for (const peerKey of peerKeys) {
+      this.cache.clearPeer(String(peerKey));
+      for (const [messageId, message] of this.pendingMedia) {
+        if (getPeer(message)?.key === String(peerKey)) this.pendingMedia.delete(messageId);
+      }
+    }
   }
 }
 

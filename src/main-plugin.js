@@ -1,6 +1,7 @@
 'use strict';
 
 const path = require('node:path');
+const { MAX_MEDIA_BYTES, MediaStore } = require('./core/media-store');
 const { RecallProcessor } = require('./core/processor');
 const { ConversationStore } = require('./core/store');
 const { isLocalStoragePath, writeStoragePath } = require('./core/storage-path');
@@ -8,12 +9,52 @@ const { CHANNELS } = require('./preload-api');
 
 const RECOVERED_CHANNEL = 'qq-local-recall:recovered';
 
+function validatePersistedMediaInput(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new TypeError('rendered media input must be an object');
+  }
+  const messageId = value.messageId;
+  const mediaIndex = value.mediaIndex;
+  if (typeof messageId !== 'string' || messageId.length < 1 || messageId.length > 256
+    || !Number.isInteger(mediaIndex) || mediaIndex < 0 || mediaIndex > 31) {
+    throw new TypeError('rendered media identity is invalid');
+  }
+  if (typeof value.sourceUrl === 'string') {
+    if (Object.keys(value).sort().join(',') !== 'mediaIndex,messageId,sourceUrl') {
+      throw new TypeError('rendered media input has unknown fields');
+    }
+    let source;
+    try { source = new URL(value.sourceUrl); } catch { throw new TypeError('sourceUrl is invalid'); }
+    if (source.protocol !== 'appimg:') throw new TypeError('sourceUrl must use appimg');
+    return { messageId, mediaIndex, sourceUrl: value.sourceUrl };
+  }
+  if (Object.keys(value).sort().join(',') !== 'bytes,mediaIndex,messageId,mimeType'
+    || value.mimeType !== 'image/png'
+    || !(value.bytes instanceof Uint8Array)
+    || value.bytes.byteLength < 1
+    || value.bytes.byteLength > MAX_MEDIA_BYTES) {
+    throw new TypeError('rendered media bytes must be a PNG Uint8Array within 20 MiB');
+  }
+  return { messageId, mediaIndex, mimeType: 'image/png', bytes: value.bytes };
+}
+
+function publicReference(reference) {
+  return {
+    sha256: reference.sha256,
+    relativePath: reference.relativePath,
+    mimeType: reference.mimeType,
+    sizeBytes: reference.sizeBytes,
+    staticFallback: reference.staticFallback === true,
+  };
+}
+
 function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHtmlPath, managerPreloadPath, logger = console }) {
   const { BrowserWindow, ipcMain, dialog } = electron;
   const store = new ConversationStore(dataDir);
+  const mediaStore = new MediaStore(dataDir);
   const configDir = path.resolve(storageConfigDir);
   let storagePath = path.resolve(dataDir);
-  const processor = new RecallProcessor({ store, cacheLimit: 10000, preventSelf: false });
+  const processor = new RecallProcessor({ store, mediaStore, cacheLimit: 10000, preventSelf: false });
   const patchedContents = new WeakSet();
   let managerWindow = null;
   let started = false;
@@ -62,6 +103,7 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
     ipcMain.handle(CHANNELS.delete, (_event, value) => {
       const peerKeys = validatePeerKeys(value);
       const result = store.deleteConversations(peerKeys);
+      mediaStore.sweep(store.mediaReferences());
       processor.clearPeers(result.deletedPeerKeys);
       broadcast(CHANNELS.deleted, {
         peerKeys: result.deletedPeerKeys,
@@ -70,6 +112,18 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
       return result;
     });
     ipcMain.handle(CHANNELS.open, () => openManager());
+    ipcMain.handle(CHANNELS.persistMedia, (_event, value) => {
+      const input = validatePersistedMediaInput(value);
+      const reference = input.sourceUrl
+        ? mediaStore.saveAppImage(input.sourceUrl)
+        : mediaStore.saveBytes(Buffer.from(input.bytes), input.mimeType, true);
+      processor.persistRenderedMedia({
+        messageId: input.messageId,
+        mediaIndex: input.mediaIndex,
+        reference,
+      });
+      return { ok: true, reference: publicReference(reference) };
+    });
     ipcMain.handle(CHANNELS.storagePath, () => storagePath);
     ipcMain.handle(CHANNELS.chooseStoragePath, async () => {
       if (typeof dialog?.showOpenDialog !== 'function') throw new Error('folder picker is unavailable');
@@ -83,12 +137,15 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
       if (!isLocalStoragePath(nextPath)) throw new Error('只能选择本机磁盘目录');
       const previousPath = storagePath;
       try {
+        mediaStore.copyReferencedTo(nextPath, store.mediaReferences());
         store.changeRoot(nextPath);
+        mediaStore.setRoot(nextPath);
         writeStoragePath(configDir, nextPath);
         storagePath = nextPath;
         return { canceled: false, path: storagePath };
       } catch (error) {
         try { store.changeRoot(previousPath); } catch (restoreError) { logger.error?.('[QQ Local Recall] storage rollback failed:', restoreError); }
+        try { mediaStore.setRoot(previousPath); } catch (restoreError) { logger.error?.('[QQ Local Recall] media rollback failed:', restoreError); }
         throw error;
       }
     });
@@ -138,7 +195,7 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
     window?.webContents?.on?.('did-navigate-in-page', () => patchWindow(window));
   }
 
-  return { start, onBrowserWindowCreated, patchWindow, openManager, store, processor };
+  return { start, onBrowserWindowCreated, patchWindow, openManager, store, mediaStore, processor };
 }
 
-module.exports = { createPlugin, RECOVERED_CHANNEL };
+module.exports = { createPlugin, RECOVERED_CHANNEL, validatePersistedMediaInput };

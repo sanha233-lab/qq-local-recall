@@ -8,6 +8,7 @@ const CHANNELS = Object.freeze({
   recovered: 'qq-local-recall:recovered',
   storagePath: 'qq-local-recall:get-storage-path',
   chooseStoragePath: 'qq-local-recall:choose-storage-path',
+  persistMedia: 'qq-local-recall:persist-rendered-media',
 });
 
 function createPreloadApi(ipcRenderer, { includeOpen = false, includeRecovered = false } = {}) {
@@ -20,6 +21,7 @@ function createPreloadApi(ipcRenderer, { includeOpen = false, includeRecovered =
   };
   if (includeOpen) api.openManager = () => ipcRenderer.invoke(CHANNELS.open);
   if (includeRecovered) {
+    api.persistRenderedMedia = value => ipcRenderer.invoke(CHANNELS.persistMedia, value);
     api.onRecovered = callback => {
       ipcRenderer.on(CHANNELS.recovered, (_event, payload) => callback(payload));
     };
