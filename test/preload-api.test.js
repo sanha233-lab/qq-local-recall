@@ -26,3 +26,19 @@ test('preload API exposes only fixed local recall operations', async () => {
   assert.deepEqual(deleted, { peerKeys: ['friend:u1'] });
 });
 
+test('renderer preload API exposes the fixed rendered-media operation', async () => {
+  const calls = [];
+  const ipcRenderer = {
+    invoke(channel, value) { calls.push([channel, value]); return Promise.resolve({ ok: true }); },
+    on() {},
+  };
+  const api = createPreloadApi(ipcRenderer, { includeRecovered: true });
+  const value = { messageId: 'm1', mediaIndex: 0, sourceUrl: 'appimg://D/a' };
+
+  await api.persistRenderedMedia(value);
+
+  assert.equal(typeof api.onRecovered, 'function');
+  assert.deepEqual(calls, [['qq-local-recall:persist-rendered-media', value]]);
+  assert.equal('readFile' in api, false);
+  assert.equal('writeFile' in api, false);
+});

@@ -31,6 +31,17 @@ function recallMessage(overrides = {}) {
   });
 }
 
+function mediaReference(char = 'a', extension = 'gif', staticFallback = false) {
+  const mimeType = extension === 'gif' ? 'image/gif' : 'image/png';
+  return {
+    sha256: char.repeat(64),
+    relativePath: `media/${char.repeat(64)}.${extension}`,
+    mimeType,
+    sizeBytes: 100,
+    staticFallback,
+  };
+}
+
 test('RecallProcessor caches received messages then replaces a recall update', () => {
   const store = makeStore();
   const processor = new RecallProcessor({ store, cacheLimit: 10 });
@@ -287,6 +298,86 @@ test('RecallProcessor replays a received picture expression from memory without 
   const afterRestart = new RecallProcessor({ store: new ConversationStore(store.rootDir) });
   const fullList = { msgList: [recallMessage()] };
   assert.deepEqual(afterRestart.processFullList(fullList).recoveredIds, []);
+});
+
+test('RecallProcessor persists a rendered reference for a pure memory-only expression', () => {
+  const store = makeStore();
+  const processor = new RecallProcessor({ store, mediaStore: { resolve() { return 'G:\\QQ\\media\\saved.gif'; } } });
+  processor.processEvent({ cmdName: 'onRecvMsg', payload: { msgList: [textMessage({ elements: [{
+    elementType: 2, picElement: { picSubType: 1, sourcePath: 'missing.gif' },
+  }] })] } });
+  processor.processEvent({ cmdName: 'onMsgInfoListUpdate', payload: { msgList: [recallMessage()] } });
+
+  processor.persistRenderedMedia({ messageId: 'm1', mediaIndex: 0, reference: mediaReference() });
+
+  const saved = store.get('m1');
+  assert.deepEqual(saved.message.elements.map(element => element.elementType), [2]);
+  assert.equal(saved.message.elements[0].picElement.sourcePath, 'G:\\QQ\\media\\saved.gif');
+  assert.deepEqual(saved.message.elements[0].qqLocalRecallMedia, mediaReference());
+});
+
+test('RecallProcessor atomically updates mixed text with multiple rendered media references in DOM order', () => {
+  const store = makeStore();
+  const resolved = ['G:\\QQ\\media\\first.gif', 'G:\\QQ\\media\\second.png'];
+  const processor = new RecallProcessor({ store, mediaStore: { resolve() { return resolved.shift(); } } });
+  processor.processEvent({ cmdName: 'onRecvMsg', payload: { msgList: [textMessage({ elements: [
+    { elementType: 1, textElement: { content: 'keep text' } },
+    { elementType: 2, picElement: { picSubType: 1, sourcePath: 'missing.gif' } },
+    { elementType: 11, marketFaceElement: { faceName: '[表情]' } },
+  ] })] } });
+  processor.processEvent({ cmdName: 'onMsgInfoListUpdate', payload: { msgList: [recallMessage()] } });
+  assert.deepEqual(store.get('m1').message.elements.map(element => element.elementType), [1]);
+
+  processor.persistRenderedMedia({ messageId: 'm1', mediaIndex: 0, reference: mediaReference('a') });
+  processor.persistRenderedMedia({ messageId: 'm1', mediaIndex: 1, reference: mediaReference('b', 'png', true) });
+
+  const saved = store.get('m1').message;
+  assert.deepEqual(saved.elements.map(element => element.elementType), [1, 2, 11]);
+  assert.equal(saved.elements[1].picElement.sourcePath, 'G:\\QQ\\media\\first.gif');
+  assert.equal(saved.elements[2].marketFaceElement.staticFacePath, 'G:\\QQ\\media\\second.png');
+  assert.equal(store.listConversations()[0].count, 1);
+});
+
+test('RecallProcessor resolves persisted media against the current root after restart', () => {
+  const store = makeStore();
+  const reference = mediaReference();
+  const saved = record => store.save(record);
+  saved({
+    msgId: 'm1', peer: { key: 'friend:u1', type: 'friend', id: 'u1', name: '好友' }, recallTime: '2000',
+    message: textMessage({ elements: [{
+      elementType: 2, picElement: { sourcePath: 'old-root.gif' }, qqLocalRecallMedia: reference,
+    }] }),
+  });
+  const processor = new RecallProcessor({
+    store: new ConversationStore(store.rootDir),
+    mediaStore: { resolve(value) { assert.deepEqual(value, reference); return 'G:\\QQ\\media\\current.gif'; } },
+  });
+  const fullList = { msgList: [recallMessage()] };
+
+  processor.processFullList(fullList);
+
+  assert.equal(fullList.msgList[0].elements[0].picElement.sourcePath, 'G:\\QQ\\media\\current.gif');
+  assert.equal(fullList.msgList[0].elements[0].picElement.filePath, 'G:\\QQ\\media\\current.gif');
+});
+
+test('RecallProcessor drops damaged persisted media but keeps mixed message text', () => {
+  const store = makeStore();
+  store.save({
+    msgId: 'm1', peer: { key: 'friend:u1', type: 'friend', id: 'u1', name: '好友' }, recallTime: '2000',
+    message: textMessage({ elements: [
+      { elementType: 1, textElement: { content: 'keep text' } },
+      { elementType: 2, picElement: { sourcePath: 'old.gif' }, qqLocalRecallMedia: mediaReference() },
+    ] }),
+  });
+  const processor = new RecallProcessor({
+    store: new ConversationStore(store.rootDir), mediaStore: { resolve() { throw new Error('damaged'); } },
+  });
+  const fullList = { msgList: [recallMessage()] };
+
+  processor.processFullList(fullList);
+
+  assert.deepEqual(fullList.msgList[0].elements.map(element => element.elementType), [1]);
+  assert.equal(fullList.msgList[0].elements[0].textElement.content, 'keep text');
 });
 
 test('RecallProcessor replays a received market face from memory without persisting missing files', () => {

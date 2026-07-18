@@ -11,7 +11,7 @@
 
 完全退出所有 QQ 进程，然后在交付目录运行。脚本会自动检查常见 QQ 目录和 Windows 卸载注册表，只接受版本为 `9.9.32-51246` 的候选目录：
 
-1.3.7 正式交付只提供基础插件 ZIP、源码 ZIP、安装/回滚脚本、`vendor` 和 `SHA256SUMS.txt`，不生成朋友分发包；仓库内旧朋友包仅作为历史版本保留。
+1.3.8 正式交付只提供基础插件 ZIP、源码 ZIP、安装/回滚脚本、`vendor` 和 `SHA256SUMS.txt`，不生成朋友分发包；仓库内旧朋友包仅作为历史版本保留。
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
@@ -48,8 +48,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -DryRun
 powershell -NoProfile -ExecutionPolicy Bypass -File .\rollback.ps1
 ```
 
-默认恢复最近一次备份，移除本插件，但保留撤回数据和 LiteLoader 文件。`-RemoveData` 只删除默认 LiteLoader 数据目录；如果曾选择自定义记录目录，请按需手动处理该目录。需要删除本次新建的 LiteLoader 目录时添加 `-RemoveLoader`。
+默认恢复最近一次备份，移除本插件，但保留撤回 JSON 与媒体数据和 LiteLoader 文件。`-RemoveData` 会删除默认 LiteLoader 插件数据目录中的记录及 `media/`；如果曾选择自定义记录目录，请按需手动处理该目录。需要删除本次新建的 LiteLoader 目录时添加 `-RemoveLoader`。
 
 ## 修改记录保存位置
 
-打开 QQ 设置中的“管理记录”，在管理窗口的“记录位置”区域点击“修改位置”，选择本机磁盘目录。现有记录会复制到新目录，旧目录不会自动删除；重启 QQ 后仍使用新目录。
+打开 QQ 设置中的“管理记录”，在管理窗口的“记录位置”区域点击“修改位置”，选择本机磁盘目录。现有 JSON 和仍被引用的媒体会复制到新目录，孤儿媒体不复制；任一步失败时继续使用旧目录。旧目录不会自动删除，重启 QQ 后使用新目录。

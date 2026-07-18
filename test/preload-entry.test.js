@@ -21,6 +21,7 @@ test('preload entry exposes the complete fixed API without local module loading'
   assert.equal(exposed.key, 'qqLocalRecall');
   assert.deepEqual(Object.keys(exposed.value).sort(), [
     'deleteConversations', 'listConversations', 'onRecordsDeleted', 'onRecovered', 'openManager',
+    'persistRenderedMedia',
   ]);
 });
 

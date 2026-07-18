@@ -3,8 +3,8 @@
   "type": "extension",
   "name": "QQ 本地防撤回",
   "slug": "qq_local_recall",
-  "description": "仅在本机保留文字、QQ 表情、回复和已有本地缓存的图片，并提供按会话清理功能。",
-  "version": "1.3.7",
+  "description": "仅在本机保留文字、QQ 表情、回复和本地媒体副本，并提供按会话清理功能。",
+  "version": "1.3.8",
   "authors": [
     {
       "name": "基于 xh321/LiteLoaderQQNT-Anti-Recall 的本地实现"

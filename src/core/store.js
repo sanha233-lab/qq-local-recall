@@ -98,6 +98,37 @@ class ConversationStore {
     return true;
   }
 
+  upsert(record) {
+    if (!record?.msgId || !record.peer?.key || !record.message) {
+      throw new TypeError('record requires msgId, peer and message');
+    }
+    const msgId = String(record.msgId);
+    const previous = this.byMessageId.get(msgId);
+    if (!previous) return this.save(record);
+    const peerKey = String(record.peer.key);
+    const entry = this.conversations.get(peerKey);
+    if (!entry) throw new Error('existing record conversation is missing');
+    const index = entry.records.findIndex(item => String(item?.msgId) === msgId);
+    if (index < 0) throw new Error('existing record index is missing');
+    entry.peer = { ...entry.peer, ...record.peer };
+    entry.records[index] = record;
+    this.writeEntry(entry);
+    this.byMessageId.set(msgId, record);
+    return false;
+  }
+
+  mediaReferences() {
+    const references = [];
+    for (const entry of this.conversations.values()) {
+      for (const record of entry.records) {
+        for (const element of record?.message?.elements || []) {
+          if (element?.qqLocalRecallMedia) references.push(element.qqLocalRecallMedia);
+        }
+      }
+    }
+    return references;
+  }
+
   writeEntry(entry) {
     const document = {
       schemaVersion: 1,

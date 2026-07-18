@@ -27,6 +27,32 @@ test('ConversationStore appends atomically and deduplicates message ids', () => 
   assert.equal(fs.readdirSync(store.recordsDir).some(name => name.endsWith('.tmp')), false);
 });
 
+test('ConversationStore upserts an existing message atomically without increasing record count', () => {
+  const store = new ConversationStore(tempDir());
+  store.save(record('m1'));
+  const updated = record('m1');
+  updated.message.elements.push({ elementType: 6, faceElement: { faceIndex: 14 } });
+
+  assert.equal(store.upsert(updated), false);
+  assert.deepEqual(store.get('m1').message.elements.map(element => element.elementType), [1, 6]);
+  assert.equal(store.listConversations()[0].count, 1);
+  assert.equal(fs.readdirSync(store.recordsDir).some(name => name.endsWith('.tmp')), false);
+});
+
+test('ConversationStore returns all fixed persisted media references', () => {
+  const store = new ConversationStore(tempDir());
+  const first = { sha256: 'a'.repeat(64), relativePath: `media/${'a'.repeat(64)}.gif`, mimeType: 'image/gif', sizeBytes: 10, staticFallback: false };
+  const second = { sha256: 'b'.repeat(64), relativePath: `media/${'b'.repeat(64)}.png`, mimeType: 'image/png', sizeBytes: 20, staticFallback: true };
+  const value = record('m1');
+  value.message.elements.push(
+    { elementType: 2, picElement: {}, qqLocalRecallMedia: first },
+    { elementType: 11, marketFaceElement: {}, qqLocalRecallMedia: second },
+  );
+  store.save(value);
+
+  assert.deepEqual(store.mediaReferences(), [first, second]);
+});
+
 test('ConversationStore lists conversations by actual file size descending', () => {
   const store = new ConversationStore(tempDir());
   store.save(record('small', 'friend:u1', '好友一'));

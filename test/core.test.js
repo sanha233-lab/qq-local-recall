@@ -84,6 +84,30 @@ test('sanitizeMessage keeps QQ group rendering metadata', () => {
   assert.equal(sanitized.elements[0].extBufForUI, '0x01');
 });
 
+test('sanitizeMessage keeps only the fixed persisted media reference fields', () => {
+  const sanitized = sanitizeMessage(textMessage({ elements: [{
+    elementType: 2,
+    picElement: { sourcePath: 'missing.jpg' },
+    qqLocalRecallMedia: {
+      sha256: 'a'.repeat(64),
+      relativePath: `media/${'a'.repeat(64)}.gif`,
+      mimeType: 'image/gif',
+      sizeBytes: 123,
+      staticFallback: false,
+      absolutePath: 'C:\\must-not-persist.gif',
+      extra: 'drop',
+    },
+  }] }), { allowMissingMedia: true });
+
+  assert.deepEqual(sanitized.elements[0].qqLocalRecallMedia, {
+    sha256: 'a'.repeat(64),
+    relativePath: `media/${'a'.repeat(64)}.gif`,
+    mimeType: 'image/gif',
+    sizeBytes: 123,
+    staticFallback: false,
+  });
+});
+
 test('sanitizeMessage keeps a locally cached QQ picture and its rendering fields', () => {
   const sourcePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-pic-')), 'cached.jpg');
   fs.writeFileSync(sourcePath, 'cached');

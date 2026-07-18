@@ -9,9 +9,11 @@ import {
   placeRecallNotice,
   removeRecallNotice,
 } from './ui/recall-notice.mjs';
+import { captureRenderedMedia } from './ui/media-capture.mjs';
 
 const recalledMessages = new Map();
 const pictureSnapshots = new Map();
+const persistedMedia = new Set();
 
 function installStyle() {
   if (document.getElementById('qq-local-recall-style')) return;
@@ -65,17 +67,51 @@ function replaceDeletedMessage(messageId) {
   target.replaceChildren(notice);
 }
 
+async function captureKey(messageId, mediaIndex, media) {
+  if (media.sourceUrl) return `${messageId}:${mediaIndex}:url:${media.sourceUrl}`;
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', media.bytes);
+  const hash = [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, '0')).join('');
+  return `${messageId}:${mediaIndex}:sha256:${hash}`;
+}
+
+async function persistVisibleMedia(messageId) {
+  const content = findMessageContent(document, messageId);
+  if (!content) return;
+  const captures = await captureRenderedMedia(content);
+  for (let mediaIndex = 0; mediaIndex < captures.length; mediaIndex += 1) {
+    const media = captures[mediaIndex];
+    const key = await captureKey(messageId, mediaIndex, media);
+    if (persistedMedia.has(key)) continue;
+    persistedMedia.add(key);
+    const value = media.sourceUrl
+      ? { messageId, mediaIndex, sourceUrl: media.sourceUrl }
+      : { messageId, mediaIndex, mimeType: media.mimeType, bytes: media.bytes };
+    try {
+      await window.qqLocalRecall.persistRenderedMedia(value);
+    } catch {
+      persistedMedia.delete(key);
+    }
+  }
+}
+
+function settleRecovered(messageId, detail) {
+  markVisibleMessages();
+  if (detail.memoryOnly === true) void persistVisibleMedia(messageId);
+}
+
 installStyle();
 rememberVisiblePictures();
 window.qqLocalRecall?.onRecovered?.(payload => {
   for (const messageId of payload?.messageIds || []) {
     const id = String(messageId);
-    recalledMessages.set(id, payload?.recallNotices?.[id] || {
+    const detail = payload?.recallNotices?.[id] || {
       kind: payload?.messageKinds?.[id] === 'picture' ? 'picture' : 'message',
-    });
+    };
+    recalledMessages.set(id, detail);
+    setTimeout(() => settleRecovered(id, detail), 0);
+    setTimeout(() => settleRecovered(id, detail), 120);
+    setTimeout(() => settleRecovered(id, detail), 1000);
   }
-  setTimeout(markVisibleMessages, 0);
-  setTimeout(markVisibleMessages, 120);
 });
 window.qqLocalRecall?.onRecordsDeleted?.(payload => {
   for (const messageId of payload?.messageIds || []) replaceDeletedMessage(messageId);

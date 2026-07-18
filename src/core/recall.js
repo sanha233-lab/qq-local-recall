@@ -62,13 +62,23 @@ function sanitizeMessage(message, { requireLocalMedia = true, allowMissingMedia 
   const elements = message.elements.flatMap(element => {
     const key = SUPPORTED_ELEMENT_KEYS.get(Number(element?.elementType));
     if (!key || !element[key]) return [];
-    if (requireLocalMedia && key === 'picElement' && !hasLocalPicture(element.picElement)
+    const persistedMedia = element.qqLocalRecallMedia;
+    if (requireLocalMedia && key === 'picElement' && !persistedMedia && !hasLocalPicture(element.picElement)
       && !allowMissingMedia) return [];
-    if (requireLocalMedia && key === 'marketFaceElement' && !hasLocalMarketFace(element.marketFaceElement)
+    if (requireLocalMedia && key === 'marketFaceElement' && !persistedMedia && !hasLocalMarketFace(element.marketFaceElement)
       && !allowMissingMedia) return [];
     const sanitized = { elementType: Number(element.elementType), [key]: clone(element[key]) };
     if (element.elementId !== undefined) sanitized.elementId = clone(element.elementId);
     if (element.extBufForUI !== undefined) sanitized.extBufForUI = clone(element.extBufForUI);
+    if (persistedMedia && typeof persistedMedia === 'object') {
+      sanitized.qqLocalRecallMedia = {
+        sha256: String(persistedMedia.sha256 || ''),
+        relativePath: String(persistedMedia.relativePath || ''),
+        mimeType: String(persistedMedia.mimeType || ''),
+        sizeBytes: Number(persistedMedia.sizeBytes),
+        staticFallback: persistedMedia.staticFallback === true,
+      };
+    }
     return [sanitized];
   });
   if (elements.length === 0) return null;
@@ -145,9 +155,10 @@ function recoverRecall(recallMessage, originalMessage, options = {}) {
 }
 
 class CandidateCache {
-  constructor(limit = 10000) {
+  constructor(limit = 10000, onDelete = null) {
     if (!Number.isInteger(limit) || limit < 1) throw new TypeError('limit must be a positive integer');
     this.limit = limit;
+    this.onDelete = onDelete;
     this.items = new Map();
   }
 
@@ -158,7 +169,7 @@ class CandidateCache {
     this.items.delete(id);
     this.items.set(id, sanitized);
     while (this.items.size > this.limit) {
-      this.items.delete(this.items.keys().next().value);
+      this.delete(this.items.keys().next().value);
     }
     return true;
   }
@@ -168,12 +179,15 @@ class CandidateCache {
   }
 
   delete(messageId) {
-    return this.items.delete(String(messageId));
+    const id = String(messageId);
+    const deleted = this.items.delete(id);
+    if (deleted) this.onDelete?.(id);
+    return deleted;
   }
 
   clearPeer(peerKey) {
     for (const [messageId, message] of this.items) {
-      if (getPeer(message)?.key === peerKey) this.items.delete(messageId);
+      if (getPeer(message)?.key === peerKey) this.delete(messageId);
     }
   }
 
