@@ -1,11 +1,32 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  formatRecallNotice,
   findMessageContent,
   findMessageRow,
   placeRecallNotice,
   removeRecallNotice,
 } from '../src/ui/recall-notice.mjs';
+
+test('formatRecallNotice distinguishes member, administrator and group owner operations', () => {
+  assert.equal(formatRecallNotice({
+    kind: 'message', operatorName: '小王', operatorRole: 0, senderName: '小王',
+  }), '小王 尝试撤回此信息');
+  assert.equal(formatRecallNotice({
+    kind: 'message', operatorName: 'Q群管家', operatorRole: 1, senderName: 'JAY',
+  }), '管理员 Q群管家 尝试撤回 JAY 的信息');
+  assert.equal(formatRecallNotice({
+    kind: 'picture', operatorName: 'see', operatorRole: 2, senderName: '月',
+  }), '群主 see 尝试撤回 月 的图片');
+  assert.equal(formatRecallNotice({
+    kind: 'picture', operatorName: '群主名片', operatorRole: 2, senderName: '群主昵称',
+    operatorUid: 'same-uid', senderUid: 'same-uid',
+  }), '群主 群主名片 尝试撤回此图片');
+  assert.equal(formatRecallNotice({
+    kind: 'message', operatorName: '成员名片', operatorRole: 0, senderName: '成员昵称',
+    operatorUid: 'same-uid', senderUid: 'same-uid',
+  }), '成员名片 尝试撤回此信息');
+});
 
 class FakeElement {
   constructor(tagName) {
@@ -14,8 +35,18 @@ class FakeElement {
     this.parentElement = null;
     this.id = '';
     this.className = '';
-    this.textContent = '';
+    this._textContent = '';
+    this.textContentWrites = 0;
     this.insertBeforeCalls = 0;
+  }
+
+  get textContent() {
+    return this._textContent;
+  }
+
+  set textContent(value) {
+    this._textContent = value;
+    this.textContentWrites += 1;
   }
 
   appendChild(child) {
@@ -91,13 +122,22 @@ test('placeRecallNotice inserts one native notice immediately before its message
   assert.equal(notice.id, 'qq-local-recall-notice-123');
   assert.equal(notice.className, 'qq-local-recall-notice');
   assert.equal(notice.children[0].className, 'qq-local-recall-notice__pill');
-  assert.equal(notice.children[0].textContent, '对方尝试撤回一条消息');
+  assert.equal(notice.children[0].textContent, '对方尝试撤回此信息');
   assert.equal(parent.children[1], row);
 
   assert.equal(placeRecallNotice(document, row, '123'), true);
   assert.equal(parent.children.length, 2);
   assert.equal(parent.children[0], notice);
   assert.equal(parent.insertBeforeCalls, 1);
+});
+
+test('placeRecallNotice labels a recovered picture separately', () => {
+  const parent = new FakeElement('div');
+  const row = parent.appendChild(new FakeElement('div'));
+  const document = new FakeDocument(parent);
+
+  assert.equal(placeRecallNotice(document, row, 'picture-1', { kind: 'picture' }), true);
+  assert.equal(parent.children[0].children[0].textContent, '对方尝试撤回此图片');
 });
 
 test('placeRecallNotice does not move an existing notice when it is already directly above the row', () => {
@@ -111,6 +151,19 @@ test('placeRecallNotice does not move an existing notice when it is already dire
 
   assert.equal(parent.insertBeforeCalls, callsAfterFirstPlacement);
   assert.equal(parent.children[1], row);
+});
+
+test('placeRecallNotice does not rewrite an unchanged label and retrigger the observer', () => {
+  const parent = new FakeElement('div');
+  const row = parent.appendChild(new FakeElement('div'));
+  const document = new FakeDocument(parent);
+  placeRecallNotice(document, row, '123', { kind: 'message' });
+  const pill = parent.children[0].children[0];
+  const writesAfterFirstPlacement = pill.textContentWrites;
+
+  placeRecallNotice(document, row, '123', { kind: 'message' });
+
+  assert.equal(pill.textContentWrites, writesAfterFirstPlacement);
 });
 
 test('findMessageRow locates the QQ 9.9.32 ml-item whose id is the raw message id', () => {

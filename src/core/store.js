@@ -9,6 +9,18 @@ function peerFileName(peerKey) {
   return `${crypto.createHash('sha256').update(String(peerKey), 'utf8').digest('hex')}.json`;
 }
 
+function jsonMap(key, value) {
+  if (value instanceof Map) return { __qqLocalRecallMap: [...value] };
+  if (value instanceof Uint8Array) return { __qqLocalRecallUint8Array: [...value] };
+  return value;
+}
+
+function reviveMap(key, value) {
+  if (value?.__qqLocalRecallMap) return new Map(value.__qqLocalRecallMap);
+  if (value?.__qqLocalRecallUint8Array) return new Uint8Array(value.__qqLocalRecallUint8Array);
+  return value;
+}
+
 function peerAccount(entry) {
   if (entry.peer.uin) return String(entry.peer.uin);
   for (const record of entry.records) {
@@ -46,7 +58,7 @@ class ConversationStore {
       if (!/^[a-f0-9]{64}\.json$/.test(name) && name !== 'broken.json') continue;
       const filePath = path.join(this.recordsDir, name);
       try {
-        const document = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        const document = JSON.parse(fs.readFileSync(filePath, 'utf8'), reviveMap);
         if (document.schemaVersion !== 1 || !document.peer?.key || !Array.isArray(document.records)) {
           throw new Error('unsupported record document');
         }
@@ -93,7 +105,7 @@ class ConversationStore {
       records: entry.records,
     };
     const tempPath = `${entry.filePath}.${process.pid}.tmp`;
-    fs.writeFileSync(tempPath, `${JSON.stringify(document, null, 2)}\n`, 'utf8');
+    fs.writeFileSync(tempPath, `${JSON.stringify(document, jsonMap, 2)}\n`, 'utf8');
     fs.renameSync(tempPath, entry.filePath);
   }
 
