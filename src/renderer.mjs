@@ -7,6 +7,7 @@ import {
   findMessageContent,
   findMessageRow,
   placeRecallNotice,
+  removeOrphanRecallNotices,
   removeRecallNotice,
 } from './ui/recall-notice.mjs';
 import { captureRenderedMedia } from './ui/media-capture.mjs';
@@ -47,6 +48,7 @@ function rememberVisiblePictures() {
 }
 
 function markVisibleMessages() {
+  removeOrphanRecallNotices(document);
   rememberVisiblePictures();
   for (const [messageId, detail] of recalledMessages) {
     if (detail.memoryOnly === true) {

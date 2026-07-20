@@ -57,3 +57,14 @@ export function placeRecallNotice(document, row, messageId, detail = {}) {
 export function removeRecallNotice(document, messageId) {
   document.getElementById(noticeId(messageId))?.remove();
 }
+
+export function removeOrphanRecallNotices(document) {
+  const prefix = 'qq-local-recall-notice-';
+  const notices = document.querySelectorAll?.('.qq-local-recall-notice') || [];
+  for (const notice of notices) {
+    const id = String(notice.id || '');
+    if (!id.startsWith(prefix)) continue;
+    const row = findMessageRow(document, id.slice(prefix.length));
+    if (!row || row.previousElementSibling !== notice) notice.remove();
+  }
+}
