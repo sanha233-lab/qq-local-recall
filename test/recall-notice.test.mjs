@@ -5,6 +5,7 @@ import {
   findMessageContent,
   findMessageRow,
   placeRecallNotice,
+  removeOrphanRecallNotices,
   removeRecallNotice,
 } from '../src/ui/recall-notice.mjs';
 
@@ -88,6 +89,17 @@ class FakeElement {
     };
     return visit(this);
   }
+
+  querySelectorAll(selector) {
+    const className = selector.startsWith('.') ? selector.slice(1) : '';
+    const matches = [];
+    const visit = element => {
+      if (className && String(element.className).split(/\s+/).includes(className)) matches.push(element);
+      for (const child of element.children) visit(child);
+    };
+    visit(this);
+    return matches;
+  }
 }
 
 class FakeDocument {
@@ -109,6 +121,10 @@ class FakeDocument {
       return null;
     };
     return visit(this.root);
+  }
+
+  querySelectorAll(selector) {
+    return this.root.querySelectorAll(selector);
   }
 }
 
@@ -200,4 +216,21 @@ test('removeRecallNotice removes only the notice for the selected message', () =
 
   assert.equal(document.getElementById('qq-local-recall-notice-123'), null);
   assert.notEqual(document.getElementById('qq-local-recall-notice-456'), null);
+});
+
+test('removeOrphanRecallNotices removes notices whose message rows left the current conversation', () => {
+  const parent = new FakeElement('div');
+  const row = parent.appendChild(new FakeElement('div'));
+  row.id = 'orphan-1';
+  const document = new FakeDocument(parent);
+  placeRecallNotice(document, row, 'orphan-1');
+  const liveRow = parent.appendChild(new FakeElement('div'));
+  liveRow.id = 'live-1';
+  placeRecallNotice(document, liveRow, 'live-1');
+
+  row.remove();
+  removeOrphanRecallNotices(document);
+
+  assert.equal(document.getElementById('qq-local-recall-notice-orphan-1'), null);
+  assert.notEqual(document.getElementById('qq-local-recall-notice-live-1'), null);
 });

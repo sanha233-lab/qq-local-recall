@@ -1,5 +1,9 @@
 # Findings
 
+## 1.3.9 temporary private-chat notice leakage
+- `板栗API` 在 `G:\QQ\records` 中没有任何会话记录；截图里的 `Jayce1`、`Agony` 等操作者可追溯到其他群记录，排除 peer key 或记录文件串用。
+- QQ 切换会话会移除原 `.ml-item` 消息行，但插件提示是消息行的外部兄弟节点，可能继续留在共享列表容器；渲染层此前只新增/更新提示，没有清理失去对应消息行的提示。
+
 ## 1.3.8 persistent rendered media acceptance
 - QQ 仍会把静态自定义表情标为 `picSubType=1`/“动画表情”；首个 `memoryOnly` 实机样本真实原件为 JPEG，内容寻址副本与 QQ `Ori` 字节哈希完全一致。
 - 真动画样本扩展名为 `.jpg`，真实魔数为 `GIF89a`，再次证明格式必须以魔数判定。QQ 原件在撤回前有效时沿用既有本地路径，不进入只针对 `memoryOnly` 的副本 IPC。

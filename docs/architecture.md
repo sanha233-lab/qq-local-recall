@@ -18,4 +18,4 @@
 
 ## 渲染层
 
-渲染层接收已恢复消息 ID、内容类型、操作者角色/名称、原发送者名称、`memoryOnly` 和已删除消息 ID。`operatorRole=0/1/2` 分别按普通成员、管理员、群主呈现；自行撤回显示“尝试撤回此信息/此图片”，管理员或群主撤回他人消息显示“尝试撤回 发送者 的信息/图片”。渲染层在消息仍可见时保存图片节点快照，`memoryOnly` 恢复时按消息 ID 回填；提示文案未变化时不写 `textContent`，避免触发 `MutationObserver` 循环。管理窗口启用 `contextIsolation`、`sandbox` 并禁用 `nodeIntegration`。
+渲染层接收已恢复消息 ID、内容类型、操作者角色/名称、原发送者名称、`memoryOnly` 和已删除消息 ID。`operatorRole=0/1/2` 分别按普通成员、管理员、群主呈现；自行撤回显示“尝试撤回此信息/此图片”，管理员或群主撤回他人消息显示“尝试撤回 发送者 的信息/图片”。渲染层在消息仍可见时保存图片节点快照，`memoryOnly` 恢复时按消息 ID 回填；提示文案未变化时不写 `textContent`，切换会话后没有对应消息行的孤立提示会被移除，避免残留到其他会话或触发 `MutationObserver` 循环。管理窗口启用 `contextIsolation`、`sandbox` 并禁用 `nodeIntegration`。

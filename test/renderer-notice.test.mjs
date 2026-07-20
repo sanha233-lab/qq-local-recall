@@ -7,6 +7,7 @@ test('renderer uses message-row native notices without detached toast or bubble 
 
   assert.match(source, /placeRecallNotice/);
   assert.match(source, /removeRecallNotice/);
+  assert.match(source, /removeOrphanRecallNotices\(document\)/);
   assert.match(source, /qq-local-recall-notice__pill/);
   assert.match(source, /messageKinds/);
   assert.match(source, /recallNotices/);
