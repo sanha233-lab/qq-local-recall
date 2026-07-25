@@ -62,6 +62,26 @@ test('media retry coordinator replaces a final loading node with unavailable tex
   assert.equal(replacements[0].className, 'qq-local-recall-media-unavailable');
 });
 
+test('media retry coordinator replaces a completed placeholder after persistence is rejected', async () => {
+  const replacements = [];
+  const node = {
+    complete: true,
+    closest() { return null; },
+    replaceWith(value) { replacements.push(value); },
+    ownerDocument: { createElement() { return { className: '', textContent: '' }; } },
+  };
+  const coordinator = createMediaRetryCoordinator({
+    capture: async () => [{ mimeType: 'image/png', bytes: new Uint8Array([1]), width: 60, height: 60, node }],
+    persist: async () => { throw new Error('static fallback aspect ratio mismatch'); },
+    schedule() {},
+  });
+
+  await coordinator.attempt('m1', true);
+
+  assert.equal(replacements.length, 1);
+  assert.equal(replacements[0].textContent, '图片暂不可用');
+});
+
 test('media retry coordinator finalizes an empty candidate set after the last attempt', async () => {
   const finalized = [];
   const coordinator = createMediaRetryCoordinator({

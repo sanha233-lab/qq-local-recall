@@ -19,7 +19,7 @@ function inputsFor(messageId, mediaIndex, candidate) {
 }
 
 function markUnavailable(node) {
-  if (!node || (node.complete !== false && !node.closest?.('[class*="loading"], [class*="spinner"]'))) return;
+  if (!node) return;
   const notice = node.ownerDocument?.createElement?.('span');
   if (!notice) return;
   notice.className = 'qq-local-recall-media-unavailable';
