@@ -30,3 +30,12 @@
 详细说明见 [docs/installation.md](docs/installation.md)。
 
 记录保存位置可在“管理记录”窗口中查看并修改；媒体保存在当前记录根目录的 `media/`，单项上限 20 MiB，并按 SHA-256 去重。插件只读取 QQ `Pic/Emoji` 本机原件或当前页面 Canvas，不下载或补取远端资源。
+
+## 开发验证
+
+在仓库根目录运行：
+
+```powershell
+npm test
+npm run check
+```
