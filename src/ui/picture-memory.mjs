@@ -11,6 +11,7 @@ export function restorePictureContent(snapshots, messageId, target) {
   const id = String(messageId);
   const snapshot = snapshots?.get(id);
   if (!snapshot || !target?.replaceChildren) return false;
+  if (target.querySelector?.('.qq-local-recall-media-unavailable')) return true;
   if (target.dataset?.qqLocalRecallMemoryId === id
     && target.querySelector?.('img, canvas, video, svg')) return true;
   const clone = snapshot.cloneNode(true);

@@ -13,6 +13,7 @@ const elements = {
   totalCount: document.getElementById('total-count'),
   storagePath: document.getElementById('storage-path'),
   changeStorage: document.getElementById('change-storage'),
+  networkMediaRecovery: document.getElementById('network-media-recovery'),
 };
 
 function visibleRows() {
@@ -99,6 +100,15 @@ async function loadStoragePath() {
   }
 }
 
+async function loadSettings() {
+  try {
+    const settings = await api.getSettings();
+    elements.networkMediaRecovery.checked = settings.networkMediaRecovery === true;
+  } catch {
+    elements.networkMediaRecovery.checked = true;
+  }
+}
+
 elements.search.addEventListener('input', () => { state.query = elements.search.value; render(); });
 elements.selectAll.addEventListener('change', () => {
   for (const row of visibleRows()) {
@@ -130,6 +140,18 @@ elements.changeStorage.addEventListener('click', async () => {
     elements.changeStorage.disabled = false;
   }
 });
+elements.networkMediaRecovery.addEventListener('change', async () => {
+  const requested = elements.networkMediaRecovery.checked;
+  elements.networkMediaRecovery.disabled = true;
+  try {
+    const settings = await api.updateSettings({ networkMediaRecovery: requested });
+    elements.networkMediaRecovery.checked = settings.networkMediaRecovery === true;
+  } catch {
+    elements.networkMediaRecovery.checked = !requested;
+  } finally {
+    elements.networkMediaRecovery.disabled = false;
+  }
+});
 api.onRecordsDeleted(() => load());
 
-await Promise.all([load(), loadStoragePath()]);
+await Promise.all([load(), loadStoragePath(), loadSettings()]);

@@ -13,9 +13,20 @@ const {
 } = require('../src/core/media-store');
 
 const GIF = Buffer.from('GIF89a test payload', 'ascii');
-const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('png')]);
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x01]);
 const WEBP = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBPdata')]);
+
+function pngWithDimensions(width, height) {
+  const bytes = Buffer.alloc(33);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes);
+  bytes.writeUInt32BE(13, 8);
+  bytes.write('IHDR', 12, 'ascii');
+  bytes.writeUInt32BE(width, 16);
+  bytes.writeUInt32BE(height, 20);
+  return bytes;
+}
+
+const PNG = pngWithDimensions(2, 2);
 
 function makeRoot(prefix = 'qq-local-recall-media-') {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -65,6 +76,22 @@ test('saveBytes accepts only a declared Canvas PNG fallback', () => {
   assert.equal(saved.staticFallback, true);
   assert.throws(() => store.saveBytes(GIF, 'image/png', true), /PNG/);
   assert.throws(() => store.saveBytes(PNG, 'image/jpeg', true), /PNG/);
+});
+
+test('static PNG dimensions reject a 60x60 placeholder for an 864x1920 picture', () => {
+  const store = new MediaStore(makeRoot());
+  const placeholder = store.saveBytes(pngWithDimensions(60, 60), 'image/png', true);
+  const portrait = store.saveBytes(pngWithDimensions(432, 960), 'image/png', true);
+
+  assert.throws(() => store.resolve(placeholder, { width: 864, height: 1920 }), /aspect ratio/);
+  assert.equal(store.resolve(portrait, { width: 864, height: 1920 }), portrait.absolutePath);
+});
+
+test('static PNG dimensions do not impose a minimum size without original dimensions', () => {
+  const store = new MediaStore(makeRoot());
+  const expression = store.saveBytes(pngWithDimensions(24, 24), 'image/png', true);
+
+  assert.equal(store.resolve(expression, {}), expression.absolutePath);
 });
 
 test('media input rejects oversized, unknown, remote and out-of-scope paths', () => {

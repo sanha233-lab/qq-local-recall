@@ -1,8 +1,13 @@
 'use strict';
 
 const path = require('node:path');
-const { MAX_MEDIA_BYTES, MediaStore } = require('./core/media-store');
+const { pathToFileURL } = require('node:url');
+const {
+  MAX_MEDIA_BYTES, MediaStore, readPngDimensions, validateAspectRatio,
+} = require('./core/media-store');
 const { RecallProcessor } = require('./core/processor');
+const { fetchQqMedia } = require('./core/qq-media-fetch');
+const { readSettings, writeSettings } = require('./core/settings');
 const { ConversationStore } = require('./core/store');
 const { isLocalStoragePath, writeStoragePath } = require('./core/storage-path');
 const { CHANNELS } = require('./preload-api');
@@ -25,17 +30,24 @@ function validatePersistedMediaInput(value) {
     }
     let source;
     try { source = new URL(value.sourceUrl); } catch { throw new TypeError('sourceUrl is invalid'); }
-    if (source.protocol !== 'appimg:') throw new TypeError('sourceUrl must use appimg');
+    if (source.protocol !== 'appimg:' && source.protocol !== 'https:') {
+      throw new TypeError('sourceUrl must use appimg or https');
+    }
     return { messageId, mediaIndex, sourceUrl: value.sourceUrl };
   }
-  if (Object.keys(value).sort().join(',') !== 'bytes,mediaIndex,messageId,mimeType'
+  if (Object.keys(value).sort().join(',') !== 'bytes,height,mediaIndex,messageId,mimeType,width'
     || value.mimeType !== 'image/png'
     || !(value.bytes instanceof Uint8Array)
     || value.bytes.byteLength < 1
-    || value.bytes.byteLength > MAX_MEDIA_BYTES) {
-    throw new TypeError('rendered media bytes must be a PNG Uint8Array within 20 MiB');
+    || value.bytes.byteLength > MAX_MEDIA_BYTES
+    || !Number.isInteger(value.width) || value.width < 1
+    || !Number.isInteger(value.height) || value.height < 1) {
+    throw new TypeError('rendered media bytes must be a dimensioned PNG Uint8Array within 20 MiB');
   }
-  return { messageId, mediaIndex, mimeType: 'image/png', bytes: value.bytes };
+  return {
+    messageId, mediaIndex, mimeType: 'image/png', bytes: value.bytes,
+    width: value.width, height: value.height,
+  };
 }
 
 function publicReference(reference) {
@@ -53,6 +65,7 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
   const store = new ConversationStore(dataDir);
   const mediaStore = new MediaStore(dataDir);
   const configDir = path.resolve(storageConfigDir);
+  let settings = readSettings(configDir);
   let storagePath = path.resolve(dataDir);
   const processor = new RecallProcessor({ store, mediaStore, cacheLimit: 10000, preventSelf: false });
   const patchedContents = new WeakSet();
@@ -112,17 +125,57 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
       return result;
     });
     ipcMain.handle(CHANNELS.open, () => openManager());
-    ipcMain.handle(CHANNELS.persistMedia, (_event, value) => {
+    ipcMain.handle(CHANNELS.persistMedia, async (event, value) => {
       const input = validatePersistedMediaInput(value);
-      const reference = input.sourceUrl
-        ? mediaStore.saveAppImage(input.sourceUrl)
-        : mediaStore.saveBytes(Buffer.from(input.bytes), input.mimeType, true);
+      const element = processor.pendingMediaElement(input.messageId, input.mediaIndex);
+      const pic = element.picElement;
+      const expectedDimensions = Number.isInteger(Number(pic?.picWidth)) && Number(pic.picWidth) > 0
+        && Number.isInteger(Number(pic?.picHeight)) && Number(pic.picHeight) > 0
+        ? { width: Number(pic.picWidth), height: Number(pic.picHeight) }
+        : undefined;
+      let reference;
+      if (input.sourceUrl) {
+        const protocol = new URL(input.sourceUrl).protocol;
+        if (protocol === 'appimg:') {
+          reference = mediaStore.saveAppImage(input.sourceUrl);
+        } else {
+          if (!settings.networkMediaRecovery) throw new Error('网络回源已关闭');
+          const sessionFetch = event?.sender?.session?.fetch;
+          if (typeof sessionFetch !== 'function') throw new Error('session fetch is unavailable');
+          const downloaded = await fetchQqMedia({
+            fetch: sessionFetch.bind(event.sender.session),
+            sourceUrl: input.sourceUrl,
+            expectedFileUuid: pic?.fileUuid || element.marketFaceElement?.fileUuid,
+          });
+          reference = mediaStore.saveBytes(downloaded.bytes, downloaded.mimeType, false);
+        }
+      } else {
+        const actualDimensions = readPngDimensions(input.bytes);
+        if (actualDimensions.width !== input.width || actualDimensions.height !== input.height) {
+          throw new TypeError('Canvas dimensions do not match PNG IHDR');
+        }
+        validateAspectRatio(actualDimensions, expectedDimensions);
+        reference = mediaStore.saveBytes(Buffer.from(input.bytes), input.mimeType, true);
+      }
+      const displayPath = mediaStore.resolve(reference, expectedDimensions);
       processor.persistRenderedMedia({
         messageId: input.messageId,
         mediaIndex: input.mediaIndex,
         reference,
       });
-      return { ok: true, reference: publicReference(reference) };
+      return {
+        ok: true,
+        reference: publicReference(reference),
+        displayUrl: pathToFileURL(displayPath).href,
+      };
+    });
+    ipcMain.handle(CHANNELS.settings, () => ({ ...settings }));
+    ipcMain.handle(CHANNELS.updateSettings, (_event, value) => {
+      if (!value || Object.keys(value).join(',') !== 'networkMediaRecovery') {
+        throw new TypeError('settings update is invalid');
+      }
+      settings = writeSettings(configDir, value);
+      return { ...settings };
     });
     ipcMain.handle(CHANNELS.storagePath, () => storagePath);
     ipcMain.handle(CHANNELS.chooseStoragePath, async () => {

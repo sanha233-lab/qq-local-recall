@@ -34,6 +34,30 @@ function sniffImage(value) {
   return { mimeType: type.mimeType, extension: type.extension };
 }
 
+function readPngDimensions(value) {
+  const bytes = Buffer.isBuffer(value) ? value : Buffer.from(value || []);
+  if (bytes.length < 24
+    || !bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+    || bytes.subarray(12, 16).toString('ascii') !== 'IHDR') {
+    throw new TypeError('invalid PNG IHDR');
+  }
+  const width = bytes.readUInt32BE(16);
+  const height = bytes.readUInt32BE(20);
+  if (width < 1 || height < 1) throw new TypeError('invalid PNG dimensions');
+  return { width, height };
+}
+
+function validateAspectRatio(actual, expected) {
+  const width = Number(expected?.width);
+  const height = Number(expected?.height);
+  if (!Number.isInteger(width) || width < 1 || !Number.isInteger(height) || height < 1) return;
+  const expectedRatio = width / height;
+  const actualRatio = actual.width / actual.height;
+  if (Math.abs(actualRatio - expectedRatio) / expectedRatio > 0.15) {
+    throw new TypeError('static fallback aspect ratio mismatch');
+  }
+}
+
 function parseAppImagePath(value) {
   let url;
   try {
@@ -125,7 +149,7 @@ class MediaStore {
     return reference;
   }
 
-  resolve(reference) {
+  resolve(reference, expectedDimensions) {
     const { relativePath, sha256 } = referenceParts(reference);
     const absolutePath = path.resolve(this.rootDir, ...relativePath.split('/'));
     const relative = path.relative(this.rootDir, absolutePath);
@@ -136,8 +160,12 @@ class MediaStore {
     if (!stats.isFile() || stats.size !== reference.sizeBytes) {
       throw new Error('media size mismatch');
     }
-    const actualHash = crypto.createHash('sha256').update(fs.readFileSync(absolutePath)).digest('hex');
+    const bytes = fs.readFileSync(absolutePath);
+    const actualHash = crypto.createHash('sha256').update(bytes).digest('hex');
     if (actualHash !== sha256) throw new Error('media SHA-256 mismatch');
+    if (reference.staticFallback === true) {
+      validateAspectRatio(readPngDimensions(bytes), expectedDimensions);
+    }
     return absolutePath;
   }
 
@@ -166,4 +194,6 @@ class MediaStore {
   }
 }
 
-module.exports = { MAX_MEDIA_BYTES, MediaStore, parseAppImagePath, sniffImage };
+module.exports = {
+  MAX_MEDIA_BYTES, MediaStore, parseAppImagePath, readPngDimensions, sniffImage, validateAspectRatio,
+};

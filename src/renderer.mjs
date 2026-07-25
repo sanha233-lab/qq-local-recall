@@ -11,10 +11,10 @@ import {
   removeRecallNotice,
 } from './ui/recall-notice.mjs';
 import { captureRenderedMedia } from './ui/media-capture.mjs';
+import { createMediaRetryCoordinator } from './ui/media-retry.mjs';
 
 const recalledMessages = new Map();
 const pictureSnapshots = new Map();
-const persistedMedia = new Set();
 
 function installStyle() {
   if (document.getElementById('qq-local-recall-style')) return;
@@ -31,6 +31,10 @@ function installStyle() {
       background: var(--background_secondary, rgb(0 0 0 / 8%));
     }
     .qq-local-recall-deleted { color: var(--text_secondary, #6b7280); font-size: 13px; }
+    .qq-local-recall-media-unavailable {
+      display: inline-flex; align-items: center; min-height: 32px; padding: 6px 10px;
+      color: var(--text_secondary, #6b7280); font-size: 13px;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -69,37 +73,29 @@ function replaceDeletedMessage(messageId) {
   target.replaceChildren(notice);
 }
 
-async function captureKey(messageId, mediaIndex, media) {
-  if (media.sourceUrl) return `${messageId}:${mediaIndex}:url:${media.sourceUrl}`;
-  const digest = await globalThis.crypto.subtle.digest('SHA-256', media.bytes);
-  const hash = [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, '0')).join('');
-  return `${messageId}:${mediaIndex}:sha256:${hash}`;
+async function captureVisibleMedia(messageId) {
+  markVisibleMessages();
+  const content = findMessageContent(document, messageId);
+  return content ? captureRenderedMedia(content) : [];
 }
 
-async function persistVisibleMedia(messageId) {
+function finalizeVisibleMedia(messageId) {
   const content = findMessageContent(document, messageId);
-  if (!content) return;
-  const captures = await captureRenderedMedia(content);
-  for (let mediaIndex = 0; mediaIndex < captures.length; mediaIndex += 1) {
-    const media = captures[mediaIndex];
-    const key = await captureKey(messageId, mediaIndex, media);
-    if (persistedMedia.has(key)) continue;
-    persistedMedia.add(key);
-    const value = media.sourceUrl
-      ? { messageId, mediaIndex, sourceUrl: media.sourceUrl }
-      : { messageId, mediaIndex, mimeType: media.mimeType, bytes: media.bytes };
-    try {
-      await window.qqLocalRecall.persistRenderedMedia(value);
-    } catch {
-      persistedMedia.delete(key);
-    }
+  const nodes = content?.querySelectorAll?.('img, [class*="loading"], [class*="spinner"]') || [];
+  for (const node of nodes) {
+    if (node.complete !== false && !node.closest?.('[class*="loading"], [class*="spinner"]')) continue;
+    const notice = document.createElement('span');
+    notice.className = 'qq-local-recall-media-unavailable';
+    notice.textContent = '图片暂不可用';
+    node.replaceWith?.(notice);
   }
 }
 
-function settleRecovered(messageId, detail) {
-  markVisibleMessages();
-  if (detail.memoryOnly === true) void persistVisibleMedia(messageId);
-}
+const mediaRecovery = createMediaRetryCoordinator({
+  capture: captureVisibleMedia,
+  persist: value => window.qqLocalRecall.persistRenderedMedia(value),
+  finalize: finalizeVisibleMedia,
+});
 
 installStyle();
 rememberVisiblePictures();
@@ -110,9 +106,8 @@ window.qqLocalRecall?.onRecovered?.(payload => {
       kind: payload?.messageKinds?.[id] === 'picture' ? 'picture' : 'message',
     };
     recalledMessages.set(id, detail);
-    setTimeout(() => settleRecovered(id, detail), 0);
-    setTimeout(() => settleRecovered(id, detail), 120);
-    setTimeout(() => settleRecovered(id, detail), 1000);
+    markVisibleMessages();
+    if (detail.memoryOnly === true) mediaRecovery.start(id);
   }
 });
 window.qqLocalRecall?.onRecordsDeleted?.(payload => {

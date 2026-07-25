@@ -380,6 +380,46 @@ test('RecallProcessor drops damaged persisted media but keeps mixed message text
   assert.equal(fullList.msgList[0].elements[0].textElement.content, 'keep text');
 });
 
+test('RecallProcessor exposes only an indexed pending media element', () => {
+  const store = makeStore();
+  const processor = new RecallProcessor({ store });
+  const picture = { elementType: 2, picElement: { fileUuid: 'file-uuid-1', sourcePath: 'missing.gif' } };
+  processor.processEvent({ cmdName: 'onRecvMsg', payload: { msgList: [textMessage({ elements: [picture] })] } });
+  processor.processEvent({ cmdName: 'onMsgInfoListUpdate', payload: { msgList: [recallMessage()] } });
+
+  assert.equal(processor.pendingMediaElement('m1', 0).picElement.fileUuid, 'file-uuid-1');
+  assert.throws(() => processor.pendingMediaElement('m1', 1), /range/);
+  assert.throws(() => processor.pendingMediaElement('missing', 0), /pending/);
+});
+
+test('RecallProcessor ignores a historical static fallback with the wrong aspect ratio', () => {
+  const store = makeStore();
+  const reference = mediaReference('b', 'png', true);
+  store.save({
+    msgId: 'm1', peer: { key: 'friend:u1', type: 'friend', id: 'u1', name: '好友' }, recallTime: '2000',
+    message: textMessage({ elements: [
+      { elementType: 1, textElement: { content: 'keep text' } },
+      { elementType: 2, picElement: { picWidth: 864, picHeight: 1920 }, qqLocalRecallMedia: reference },
+    ] }),
+  });
+  const resolutions = [];
+  const processor = new RecallProcessor({
+    store: new ConversationStore(store.rootDir),
+    mediaStore: {
+      resolve(value, expectedDimensions) {
+        resolutions.push([value, expectedDimensions]);
+        throw new Error('static fallback aspect ratio mismatch');
+      },
+    },
+  });
+  const fullList = { msgList: [recallMessage()] };
+
+  processor.processFullList(fullList);
+
+  assert.deepEqual(resolutions, [[reference, { width: 864, height: 1920 }]]);
+  assert.deepEqual(fullList.msgList[0].elements.map(element => element.elementType), [1]);
+});
+
 test('RecallProcessor replays a received market face from memory without persisting missing files', () => {
   const store = makeStore();
   const dynamicFacePath = path.join(os.tmpdir(), `qq-local-recall-market-memory-${process.pid}`);

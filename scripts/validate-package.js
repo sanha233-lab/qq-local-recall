@@ -45,7 +45,10 @@ const pluginZip = fs.readFileSync(path.join(delivery, expectedDelivery[0]));
 for (const relative of [
   ...Object.values(manifest.injects || {}),
   'src/core/media-store.js',
+  'src/core/qq-media-fetch.js',
+  'src/core/settings.js',
   'src/ui/media-capture.mjs',
+  'src/ui/media-retry.mjs',
   'src/ui/picture-memory.mjs',
 ]) {
   const archiveRelative = relative.replace(/^\.\//, '').replaceAll('\\', '/');
@@ -58,4 +61,4 @@ for (const relative of [
   }
 }
 
-console.log('Package validation passed: Manifest V4, matching version, offline CSP, media entries, and SHA-256 checks verified.');
+console.log('Package validation passed: Manifest V4, matching version, manager CSP, recovery entries, and SHA-256 checks verified.');

@@ -32,6 +32,11 @@ button:not(:disabled):active { transform: translateY(1px); }
 .storage-copy { display: grid; gap: 5px; min-width: 0; }
 .storage-label { color: var(--muted); font-size: 12px; }
 .storage-copy code { overflow: hidden; color: inherit; font: 12px/1.4 "Cascadia Mono", Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.recovery-setting { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: -8px 0 20px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.recovery-setting div { display: grid; gap: 4px; }
+.recovery-setting strong { font-size: 13px; }
+.recovery-setting span { color: var(--muted); font-size: 12px; }
+.recovery-setting input { width: 18px; height: 18px; accent-color: var(--accent); }
 .status { margin: 24px 0; color: var(--muted); text-align: center; }
 .table-wrap { overflow: auto; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); }
 table { width: 100%; border-collapse: collapse; table-layout: fixed; }

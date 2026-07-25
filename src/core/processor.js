@@ -177,7 +177,12 @@ class RecallProcessor {
       if (!reference) return [element];
       if (!this.mediaStore) return [];
       try {
-        const absolutePath = this.mediaStore.resolve(reference);
+        const pic = element.picElement;
+        const expectedDimensions = Number.isInteger(Number(pic?.picWidth)) && Number(pic.picWidth) > 0
+          && Number.isInteger(Number(pic?.picHeight)) && Number(pic.picHeight) > 0
+          ? { width: Number(pic.picWidth), height: Number(pic.picHeight) }
+          : undefined;
+        const absolutePath = this.mediaStore.resolve(reference, expectedDimensions);
         if (element.picElement) {
           element.picElement.sourcePath = absolutePath;
           element.picElement.filePath = absolutePath;
@@ -233,6 +238,15 @@ class RecallProcessor {
       this.cache.delete(id);
     }
     return reference;
+  }
+
+  pendingMediaElement(messageId, mediaIndex) {
+    const pending = this.pendingMedia.get(String(messageId));
+    if (!pending) throw new Error('rendered media is not pending');
+    const mediaElements = pending.elements.filter(element => element?.picElement || element?.marketFaceElement);
+    const element = mediaElements[mediaIndex];
+    if (!element) throw new RangeError('media index is out of range');
+    return element;
   }
 
   clearPeers(peerKeys) {

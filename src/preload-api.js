@@ -9,9 +9,14 @@ const CHANNELS = Object.freeze({
   storagePath: 'qq-local-recall:get-storage-path',
   chooseStoragePath: 'qq-local-recall:choose-storage-path',
   persistMedia: 'qq-local-recall:persist-rendered-media',
+  settings: 'qq-local-recall:get-settings',
+  updateSettings: 'qq-local-recall:update-settings',
 });
 
-function createPreloadApi(ipcRenderer, { includeOpen = false, includeRecovered = false } = {}) {
+function createPreloadApi(
+  ipcRenderer,
+  { includeOpen = false, includeRecovered = false, includeSettings = false } = {},
+) {
   const api = {
     listConversations: () => ipcRenderer.invoke(CHANNELS.list),
     deleteConversations: peerKeys => ipcRenderer.invoke(CHANNELS.delete, peerKeys),
@@ -25,6 +30,10 @@ function createPreloadApi(ipcRenderer, { includeOpen = false, includeRecovered =
     api.onRecovered = callback => {
       ipcRenderer.on(CHANNELS.recovered, (_event, payload) => callback(payload));
     };
+  }
+  if (includeSettings) {
+    api.getSettings = () => ipcRenderer.invoke(CHANNELS.settings);
+    api.updateSettings = value => ipcRenderer.invoke(CHANNELS.updateSettings, value);
   }
   return Object.freeze(api);
 }

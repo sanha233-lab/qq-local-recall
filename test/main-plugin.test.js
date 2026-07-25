@@ -48,7 +48,29 @@ function fakeChatWindow() {
   return { webContents, sent, listeners };
 }
 
-const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('png')]);
+function pngWithDimensions(width, height) {
+  const bytes = Buffer.alloc(33);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes);
+  bytes.writeUInt32BE(13, 8);
+  bytes.write('IHDR', 12, 'ascii');
+  bytes.writeUInt32BE(width, 16);
+  bytes.writeUInt32BE(height, 20);
+  return bytes;
+}
+
+const PNG = pngWithDimensions(2, 2);
+const PORTRAIT_PNG = pngWithDimensions(432, 960);
+
+function primePending(plugin, picElement = {}) {
+  plugin.processor.processEvent({ cmdName: 'onRecvMsg', payload: { msgList: [message([{
+    elementType: 2,
+    picElement: { sourcePath: 'missing.png', ...picElement },
+  }])] } });
+  plugin.processor.processEvent({ cmdName: 'onMsgInfoListUpdate', payload: { msgList: [message([{
+    elementType: 8,
+    grayTipElement: { subElementType: 1, revokeElement: { isSelfOperate: false } },
+  }])] } });
+}
 
 function mediaRecord(msgId, peerKey, reference) {
   return {
@@ -115,19 +137,22 @@ test('main plugin lists and deletes conversations through narrow IPC handlers', 
   assert.deepEqual(result.deletedMessageIds, ['m1']);
 });
 
-test('rendered-media IPC validation accepts only fixed appimg or PNG byte inputs', () => {
+test('rendered-media IPC validation accepts only fixed appimg, HTTPS or dimensioned PNG inputs', () => {
   const source = { messageId: 'm1', mediaIndex: 0, sourceUrl: 'appimg://D/QQ/Tencent%20Files/a/nt_qq/nt_data/Emoji/x.jpg' };
   assert.deepEqual(validatePersistedMediaInput(source), source);
-  const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
-  assert.deepEqual(validatePersistedMediaInput({ messageId: 'm1', mediaIndex: 31, mimeType: 'image/png', bytes }), {
-    messageId: 'm1', mediaIndex: 31, mimeType: 'image/png', bytes,
+  const remote = { messageId: 'm1', mediaIndex: 0, sourceUrl: 'https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=f1&spec=0&rkey=key' };
+  assert.deepEqual(validatePersistedMediaInput(remote), remote);
+  const bytes = new Uint8Array(PORTRAIT_PNG);
+  assert.deepEqual(validatePersistedMediaInput({ messageId: 'm1', mediaIndex: 31, mimeType: 'image/png', bytes, width: 432, height: 960 }), {
+    messageId: 'm1', mediaIndex: 31, mimeType: 'image/png', bytes, width: 432, height: 960,
   });
   for (const invalid of [
     { ...source, outputPath: 'G:\\QQ\\media\\x.gif' },
-    { ...source, sourceUrl: 'https://example.test/x.gif' },
+    { ...source, sourceUrl: 'http://example.test/x.gif' },
     { ...source, mediaIndex: 32 },
     { messageId: 'm1', mediaIndex: 0, mimeType: 'image/jpeg', bytes },
-    { messageId: 'm1', mediaIndex: 0, mimeType: 'image/png', bytes: new Uint8Array(20 * 1024 * 1024 + 1) },
+    { messageId: 'm1', mediaIndex: 0, mimeType: 'image/png', bytes, width: 0, height: 960 },
+    { messageId: 'm1', mediaIndex: 0, mimeType: 'image/png', bytes: new Uint8Array(20 * 1024 * 1024 + 1), width: 1, height: 1 },
   ]) assert.throws(() => validatePersistedMediaInput(invalid));
 });
 
@@ -142,6 +167,88 @@ test('main plugin registers the fixed rendered-media IPC handler', () => {
   plugin.start();
 
   assert.equal(typeof electron.handlers.get('qq-local-recall:persist-rendered-media'), 'function');
+});
+
+test('Canvas media IPC rejects a 60x60 placeholder and persists a matching portrait', async () => {
+  const electron = fakeElectron();
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-main-'));
+  const plugin = createPlugin({ electron, dataDir, managerHtmlPath: 'manager.html', managerPreloadPath: 'manager-preload.js' });
+  plugin.start();
+  primePending(plugin, { picWidth: 864, picHeight: 1920, fileUuid: 'f1' });
+  const handler = electron.handlers.get('qq-local-recall:persist-rendered-media');
+
+  await assert.rejects(handler({}, {
+    messageId: 'm1', mediaIndex: 0, mimeType: 'image/png', bytes: new Uint8Array(pngWithDimensions(60, 60)),
+    width: 60, height: 60,
+  }), /aspect ratio/);
+  const result = await handler({}, {
+    messageId: 'm1', mediaIndex: 0, mimeType: 'image/png', bytes: new Uint8Array(PORTRAIT_PNG),
+    width: 432, height: 960,
+  });
+
+  assert.equal(result.ok, true);
+  assert.match(result.displayUrl, /^file:/);
+  assert.equal('sourceUrl' in result, false);
+  assert.equal(plugin.store.get('m1').message.elements[0].qqLocalRecallMedia.staticFallback, true);
+});
+
+test('HTTPS media IPC uses only the invoking QQ session and returns no temporary URL', async () => {
+  const electron = fakeElectron();
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-main-'));
+  const plugin = createPlugin({ electron, dataDir, managerHtmlPath: 'manager.html', managerPreloadPath: 'manager-preload.js' });
+  plugin.start();
+  primePending(plugin, { picWidth: 2, picHeight: 2, fileUuid: 'file-uuid-1' });
+  const sourceUrl = 'https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=file-uuid-1&spec=0&rkey=temporary-key';
+  const calls = [];
+  const session = {
+    async fetch(url, options) {
+      assert.equal(this, session);
+      calls.push([url, options]);
+      return new Response(Buffer.from('GIF89a image', 'ascii'));
+    },
+  };
+
+  const result = await electron.handlers.get('qq-local-recall:persist-rendered-media')(
+    { sender: { session } }, { messageId: 'm1', mediaIndex: 0, sourceUrl },
+  );
+
+  assert.equal(calls.length, 1);
+  assert.match(result.displayUrl, /^file:/);
+  assert.equal(JSON.stringify(result).includes('temporary-key'), false);
+  const recordName = fs.readdirSync(path.join(dataDir, 'records'))[0];
+  const recordText = fs.readFileSync(path.join(dataDir, 'records', recordName), 'utf8');
+  assert.equal(recordText.includes('rkey'), false);
+  assert.equal(recordText.includes('temporary-key'), false);
+});
+
+test('disabled or unavailable QQ session recovery performs no network request', async () => {
+  const electron = fakeElectron();
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-main-'));
+  const configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-config-'));
+  const plugin = createPlugin({
+    electron, dataDir, storageConfigDir: configDir,
+    managerHtmlPath: 'manager.html', managerPreloadPath: 'manager-preload.js',
+  });
+  plugin.start();
+  primePending(plugin, { fileUuid: 'file-uuid-1' });
+  const handler = electron.handlers.get('qq-local-recall:persist-rendered-media');
+  const input = {
+    messageId: 'm1', mediaIndex: 0,
+    sourceUrl: 'https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=file-uuid-1&spec=0&rkey=temporary-key',
+  };
+  let calls = 0;
+  const event = { sender: { session: { fetch: async () => { calls += 1; return new Response(); } } } };
+
+  await electron.handlers.get('qq-local-recall:update-settings')({}, { networkMediaRecovery: false });
+  await assert.rejects(handler(event, input), /关闭/);
+  assert.equal(calls, 0);
+
+  await electron.handlers.get('qq-local-recall:update-settings')({}, { networkMediaRecovery: true });
+  await assert.rejects(handler({ sender: { session: {} } }, input), /unavailable/);
+  assert.equal(calls, 0);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(configDir, 'settings.json'), 'utf8')), {
+    version: 1, networkMediaRecovery: true,
+  });
 });
 
 test('deleting conversations removes media only after the final reference', async () => {

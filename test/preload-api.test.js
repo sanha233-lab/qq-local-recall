@@ -42,3 +42,22 @@ test('renderer preload API exposes the fixed rendered-media operation', async ()
   assert.equal('readFile' in api, false);
   assert.equal('writeFile' in api, false);
 });
+
+test('manager preload API exposes only fixed settings operations', async () => {
+  const calls = [];
+  const ipcRenderer = {
+    invoke(channel, value) { calls.push([channel, value]); return Promise.resolve({ networkMediaRecovery: true }); },
+    on() {},
+  };
+  const api = createPreloadApi(ipcRenderer, { includeSettings: true });
+
+  await api.getSettings();
+  await api.updateSettings({ networkMediaRecovery: false });
+
+  assert.equal(typeof api.getSettings, 'function');
+  assert.equal(typeof api.updateSettings, 'function');
+  assert.deepEqual(calls, [
+    ['qq-local-recall:get-settings', undefined],
+    ['qq-local-recall:update-settings', { networkMediaRecovery: false }],
+  ]);
+});

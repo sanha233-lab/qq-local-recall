@@ -67,3 +67,15 @@ test('picture memory ignores content without rendered media and evicts the oldes
   assert.equal(snapshots.has('m1'), false);
   assert.equal(snapshots.has('m2'), true);
 });
+
+test('picture memory does not restore a loading snapshot over the final unavailable marker', () => {
+  const snapshots = new Map([['m1', new FakeElement('snapshot', { media: true })]]);
+  const target = new FakeElement('target');
+  target.dataset = { qqLocalRecallMemoryId: 'm1' };
+  target.querySelector = selector => selector === '.qq-local-recall-media-unavailable' ? {} : null;
+
+  const restored = restorePictureContent(snapshots, 'm1', target);
+
+  assert.equal(restored, true);
+  assert.equal(target.replaceChildrenCalls, 0);
+});
