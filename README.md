@@ -2,6 +2,8 @@
 
 面向 Windows x64 QQ `9.9.32-51246` 的 LiteLoaderQQNT 插件。插件只处理本机已经收到的消息，不修改 QQ 服务器状态或网络协议。
 
+> 最新版本：**1.4.0**。查看 [更新日志](CHANGELOG.md) 或 [GitHub Releases](https://github.com/sanha233-lab/qq-local-recall/releases)。
+
 ## 功能
 
 - 保留文字、QQ 原生小表情、回复、混合消息，以及普通图片、图片/动画表情和商城表情；优先保存 QQ 本机 `appimg:` 原始动画字节，本地副本不可用时默认通过当前 QQ 会话受限回源，最后才保存已加载完成且比例匹配的静态 PNG。

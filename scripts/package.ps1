@@ -20,7 +20,7 @@ Compress-Archive -LiteralPath $PluginRoot -DestinationPath $PluginZip -Compressi
 
 $SourceRoot = Join-Path $Stage 'QQ-Local-Recall-source'
 New-Item -ItemType Directory -Path $SourceRoot -Force | Out-Null
-foreach ($item in @('manifest.json', 'package.json', 'LICENSE', 'NOTICE.md', 'README.md', 'src', 'test', 'scripts', 'docs')) {
+foreach ($item in @('manifest.json', 'package.json', 'LICENSE', 'NOTICE.md', 'README.md', 'CHANGELOG.md', 'src', 'test', 'scripts', 'docs')) {
     Copy-Item -LiteralPath (Join-Path $Root $item) -Destination $SourceRoot -Recurse
 }
 $SourceZip = Join-Path $Delivery "QQ-Local-Recall-source-v$Version.zip"
