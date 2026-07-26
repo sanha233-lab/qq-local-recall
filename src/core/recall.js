@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const SUPPORTED_ELEMENT_KEYS = new Map([
   [1, 'textElement'],
   [2, 'picElement'],
+  [3, 'pttElement'],
   [6, 'faceElement'],
   [7, 'replyElement'],
   [11, 'marketFaceElement'],
@@ -29,6 +30,11 @@ function clone(value) {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, clone(item)]));
   }
   return value;
+}
+
+function hasLocalPtt(ptt) {
+  const filePath = ptt?.filePath;
+  return typeof filePath === 'string' && filePath.length > 0 && fs.existsSync(filePath);
 }
 
 function hasLocalPicture(pic) {
@@ -65,10 +71,18 @@ function sanitizeMessage(message, { requireLocalMedia = true, allowMissingMedia 
     const persistedMedia = element.qqLocalRecallMedia;
     if (requireLocalMedia && key === 'picElement' && !persistedMedia && !hasLocalPicture(element.picElement)
       && !allowMissingMedia) return [];
+    if (requireLocalMedia && key === 'pttElement' && !persistedMedia && !hasLocalPtt(element.pttElement)
+      && !allowMissingMedia) return [];
     if (requireLocalMedia && key === 'marketFaceElement' && !persistedMedia && !hasLocalMarketFace(element.marketFaceElement)
       && !allowMissingMedia) return [];
     const sanitized = { elementType: Number(element.elementType), [key]: clone(element[key]) };
     if (key === 'picElement') delete sanitized.picElement.originImageUrl;
+    if (key === 'pttElement') {
+      delete sanitized.pttElement.fileUrl;
+      delete sanitized.pttElement.bufKey;
+      delete sanitized.pttElement.bufStr;
+      delete sanitized.pttElement.urlExpired;
+    }
     if (element.elementId !== undefined) sanitized.elementId = clone(element.elementId);
     if (element.extBufForUI !== undefined) sanitized.extBufForUI = clone(element.extBufForUI);
     if (persistedMedia && typeof persistedMedia === 'object') {

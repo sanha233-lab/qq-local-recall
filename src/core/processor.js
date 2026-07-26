@@ -10,14 +10,19 @@ const {
 } = require('./recall');
 
 class RecallProcessor {
-  constructor({ store, mediaStore = null, cacheLimit = 10000, preventSelf = false }) {
+  constructor({ store, mediaStore = null, pttStore = null, cacheLimit = 10000, preventSelf = false }) {
     if (!store) throw new TypeError('store is required');
     this.store = store;
     this.mediaStore = mediaStore;
+    this.pttStore = pttStore;
     this.pendingMedia = new Map();
     this.pendingMediaLimit = cacheLimit;
     this.cache = new CandidateCache(cacheLimit, messageId => this.pendingMedia.delete(messageId));
     this.preventSelf = preventSelf;
+    // Secondary index: "chatType:peerUid:senderUid" -> msgId (most recent voice from sender)
+    this.pttLastMsgId = new Map();
+    // Downloaded PTT files: msgId -> { relativePath, sha256, sizeBytes, ext }
+    this.pttDownloads = new Map();
   }
 
   processEvent(event) {
@@ -39,6 +44,7 @@ class RecallProcessor {
       const message = messages[index];
       if (!getRecallInfo(message)) {
         this.cache.set(message);
+        this.indexPttMessage(message);
         continue;
       }
       const recovered = this.restore(message);
@@ -46,9 +52,11 @@ class RecallProcessor {
       messages[index] = recovered;
       const recoveredId = String(recovered.msgId);
       result.recoveredIds.push(recoveredId);
-      result.messageKinds[recoveredId] = recovered.elements.some(element => element?.picElement)
-        ? 'picture'
-        : 'message';
+      result.messageKinds[recoveredId] = recovered.elements.some(element => element?.pttElement)
+        ? 'voice'
+        : recovered.elements.some(element => element?.picElement)
+          ? 'picture'
+          : 'message';
       result.recallNotices[recoveredId] = this.noticeFor(recovered, result.messageKinds[recoveredId]);
       if (/(onMsgInfoListUpdate|onActiveMsgInfoUpdate)/.test(command)) {
         result.attemptedIds.push(String(recovered.msgId));
@@ -64,6 +72,7 @@ class RecallProcessor {
       const message = container.msgList[index];
       if (!getRecallInfo(message)) {
         this.cache.set(message);
+        this.indexPttMessage(message);
         continue;
       }
       const recovered = this.restore(message);
@@ -71,9 +80,11 @@ class RecallProcessor {
       container.msgList[index] = recovered;
       const recoveredId = String(recovered.msgId);
       result.recoveredIds.push(recoveredId);
-      result.messageKinds[recoveredId] = recovered.elements.some(element => element?.picElement)
-        ? 'picture'
-        : 'message';
+      result.messageKinds[recoveredId] = recovered.elements.some(element => element?.pttElement)
+        ? 'voice'
+        : recovered.elements.some(element => element?.picElement)
+          ? 'picture'
+          : 'message';
       result.recallNotices[recoveredId] = this.noticeFor(recovered, result.messageKinds[recoveredId]);
     }
     return result;
@@ -91,6 +102,10 @@ class RecallProcessor {
         return;
       }
       if (value.cmdName) {
+        if (/onRichMediaDownloadComplete/.test(String(value.cmdName))) {
+          this.processRichMediaDownload(value.payload?.notifyInfo);
+          return;
+        }
         const result = this.processEvent(value);
         recoveredIds.push(...result.recoveredIds);
         attemptedIds.push(...result.attemptedIds);
@@ -110,6 +125,34 @@ class RecallProcessor {
       messageKinds,
       recallNotices,
     };
+  }
+
+  // Called when QQ finishes downloading a rich-media file.
+  processRichMediaDownload(notifyInfo) {
+    if (!notifyInfo || !this.pttStore) return;
+    const filePath = String(notifyInfo.filePath || '');
+    const msgId = String(notifyInfo.msgId || '');
+    if (!filePath || !msgId) return;
+    const isPtt = /[\\/]Ptt[\\/]/i.test(filePath)
+      || /\.(amr|silk|slk)$/i.test(filePath)
+      || Number(notifyInfo.downloadType) === 2;
+    if (!isPtt) return;
+    try {
+      const ref = this.pttStore.saveFile(filePath);
+      this.pttDownloads.set(msgId, ref);
+    } catch { /* file may not exist yet or already cleaned up */ }
+  }
+
+  // Update pttLastMsgId secondary index when a voice message is cached.
+  indexPttMessage(message) {
+    if (!message || !Array.isArray(message.elements)) return;
+    const hasPtt = message.elements.some(el => Number(el?.elementType) === 3 && el.pttElement);
+    if (!hasPtt) return;
+    const chatType = Number(message.chatType);
+    const peerUid = String(message.peerUid || '');
+    const senderUid = String(message.senderUid || '');
+    if (!peerUid || !senderUid) return;
+    this.pttLastMsgId.set(`${chatType}:${peerUid}:${senderUid}`, String(message.msgId));
   }
 
   noticeFor(recovered, kind) {
@@ -135,12 +178,49 @@ class RecallProcessor {
     const messageId = getOriginalMessageId(recallMessage, info);
     const stored = this.store.get(messageId);
     const cached = this.cache.get(messageId);
+
+    // Voice recall fallback: revokeElement has no origMsgId, so messageId falls back to
+    // the recall notice's own msgId and the normal lookup fails. Use pttLastMsgId index.
+    if (!stored && !cached && info.origMsgSenderUid) {
+      const chatType = Number(recallMessage.chatType);
+      const peerUid = String(recallMessage.peerUid || '');
+      const pttKey = `${chatType}:${peerUid}:${info.origMsgSenderUid}`;
+      const voiceMsgId = this.pttLastMsgId.get(pttKey);
+      if (voiceMsgId) {
+        const voiceCached = this.cache.get(voiceMsgId);
+        const voiceStored = this.store.get(voiceMsgId);
+        if (voiceCached || voiceStored) {
+          return this.restoreWithId(recallMessage, info, voiceMsgId, voiceCached, voiceStored);
+        }
+      }
+    }
+
+    return this.restoreWithId(recallMessage, info, messageId, cached, stored);
+  }
+
+  restoreWithId(recallMessage, info, messageId, cached, stored) {
     const storedMessage = this.resolveStoredMedia(stored?.message);
     const persistableOriginal = sanitizeMessage(storedMessage || cached);
     const currentSessionOriginal = sanitizeMessage(cached, { allowMissingMedia: true });
     const original = currentSessionOriginal || persistableOriginal;
     const recovered = recoverRecall(recallMessage, original, { preventSelf: this.preventSelf });
     if (!recovered) return null;
+
+    // Attach saved PTT file path if available
+    const pttDownload = this.pttDownloads.get(messageId);
+    if (pttDownload) {
+      for (const element of (recovered.elements || [])) {
+        if (element.pttElement) {
+          element.pttElement.filePath = pttDownload.absolutePath || element.pttElement.filePath;
+          element.qqLocalRecallMedia = {
+            sha256: pttDownload.sha256,
+            relativePath: pttDownload.relativePath,
+            sizeBytes: pttDownload.sizeBytes,
+          };
+        }
+      }
+    }
+
     const mediaCount = message => (message?.elements || [])
       .filter(element => element?.picElement || element?.marketFaceElement).length;
     if (mediaCount(original) > mediaCount(persistableOriginal)) {
@@ -156,6 +236,17 @@ class RecallProcessor {
     if (!stored && peer) {
       const persistable = recoverRecall(recallMessage, persistableOriginal, { preventSelf: this.preventSelf });
       if (persistable) {
+        if (pttDownload) {
+          for (const element of (persistable.elements || [])) {
+            if (element.pttElement) {
+              element.qqLocalRecallMedia = {
+                sha256: pttDownload.sha256,
+                relativePath: pttDownload.relativePath,
+                sizeBytes: pttDownload.sizeBytes,
+              };
+            }
+          }
+        }
         this.store.save({
           msgId: String(persistable.msgId),
           peer,
@@ -175,6 +266,13 @@ class RecallProcessor {
     prepared.elements = prepared.elements.flatMap(element => {
       const reference = element.qqLocalRecallMedia;
       if (!reference) return [element];
+      if (element.pttElement && this.pttStore) {
+        try {
+          const absolutePath = this.pttStore.resolve(reference.relativePath);
+          element.pttElement.filePath = absolutePath;
+          return [element];
+        } catch { return []; }
+      }
       if (!this.mediaStore) return [];
       try {
         const pic = element.picElement;

@@ -194,6 +194,85 @@ class MediaStore {
   }
 }
 
+const AUDIO_EXTENSIONS = new Set(['amr', 'silk', 'slk', 'mp3', 'm4a', 'ogg', 'wav', 'aac']);
+const PTT_REFERENCE_PATH = /^ptt\/([a-f0-9]{64})\.(amr|silk|slk|mp3|m4a|ogg|wav|aac)$/;
+
+class PttStore {
+  constructor(rootDir) {
+    this.setRoot(rootDir);
+  }
+
+  setRoot(rootDir) {
+    this.rootDir = path.resolve(rootDir);
+    this.pttDir = path.join(this.rootDir, 'ptt');
+    fs.mkdirSync(this.pttDir, { recursive: true });
+    return this.rootDir;
+  }
+
+  saveFile(sourcePath) {
+    const stats = fs.statSync(sourcePath);
+    if (!stats.isFile()) throw new TypeError('PTT source must be a file');
+    const ext = path.extname(sourcePath).replace('.', '').toLowerCase();
+    const validExt = AUDIO_EXTENSIONS.has(ext) ? ext : 'amr';
+    const bytes = fs.readFileSync(sourcePath);
+    const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
+    const relativePath = `ptt/${sha256}.${validExt}`;
+    const absolutePath = path.join(this.rootDir, 'ptt', `${sha256}.${validExt}`);
+    if (!fs.existsSync(absolutePath)) {
+      const tempPath = `${absolutePath}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+      try {
+        fs.writeFileSync(tempPath, bytes, { flag: 'wx' });
+        fs.renameSync(tempPath, absolutePath);
+      } finally {
+        fs.rmSync(tempPath, { force: true });
+      }
+    }
+    return { relativePath, absolutePath, sha256, sizeBytes: bytes.length, ext: validExt };
+  }
+
+  resolve(relativePath) {
+    const rel = String(relativePath || '').replaceAll('\\', '/');
+    if (!PTT_REFERENCE_PATH.test(rel)) throw new TypeError('invalid PTT reference');
+    const absolutePath = path.resolve(this.rootDir, ...rel.split('/'));
+    const relative = path.relative(this.rootDir, absolutePath);
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+      throw new TypeError('invalid PTT reference path');
+    }
+    if (!fs.existsSync(absolutePath)) throw new Error('PTT file not found');
+    return absolutePath;
+  }
+
+  copyReferencedTo(nextRoot, references) {
+    const destPttDir = path.join(path.resolve(nextRoot), 'ptt');
+    fs.mkdirSync(destPttDir, { recursive: true });
+    for (const ref of references) {
+      const rel = String(ref?.relativePath || '').replaceAll('\\', '/');
+      if (!PTT_REFERENCE_PATH.test(rel)) continue;
+      try {
+        const src = this.resolve(rel);
+        const dest = path.join(path.resolve(nextRoot), ...rel.split('/'));
+        fs.copyFileSync(src, dest);
+      } catch { /* skip missing */ }
+    }
+  }
+
+  sweep(references) {
+    const retained = new Set(
+      references
+        .map(r => String(r?.relativePath || '').replaceAll('\\', '/'))
+        .filter(r => PTT_REFERENCE_PATH.test(r)),
+    );
+    const removed = [];
+    for (const name of fs.readdirSync(this.pttDir)) {
+      const rel = `ptt/${name}`;
+      if (!PTT_REFERENCE_PATH.test(rel) || retained.has(rel)) continue;
+      fs.rmSync(path.join(this.pttDir, name), { force: true });
+      removed.push(rel);
+    }
+    return removed;
+  }
+}
+
 module.exports = {
-  MAX_MEDIA_BYTES, MediaStore, parseAppImagePath, readPngDimensions, sniffImage, validateAspectRatio,
+  MAX_MEDIA_BYTES, MediaStore, PttStore, parseAppImagePath, readPngDimensions, sniffImage, validateAspectRatio,
 };

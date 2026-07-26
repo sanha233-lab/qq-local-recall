@@ -2,7 +2,7 @@
 
 const path = require('node:path');
 const {
-  MAX_MEDIA_BYTES, MediaStore, readPngDimensions, validateAspectRatio,
+  MAX_MEDIA_BYTES, MediaStore, PttStore, readPngDimensions, validateAspectRatio,
 } = require('./core/media-store');
 const { RecallProcessor } = require('./core/processor');
 const { fetchQqMedia } = require('./core/qq-media-fetch');
@@ -71,10 +71,11 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
   const { BrowserWindow, ipcMain, dialog } = electron;
   const store = new ConversationStore(dataDir);
   const mediaStore = new MediaStore(dataDir);
+  const pttStore = new PttStore(dataDir);
   const configDir = path.resolve(storageConfigDir);
   let settings = readSettings(configDir);
   let storagePath = path.resolve(dataDir);
-  const processor = new RecallProcessor({ store, mediaStore, cacheLimit: 10000, preventSelf: false });
+  const processor = new RecallProcessor({ store, mediaStore, pttStore, cacheLimit: 10000, preventSelf: false });
   const patchedContents = new WeakSet();
   let managerWindow = null;
   let started = false;
@@ -124,6 +125,7 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
       const peerKeys = validatePeerKeys(value);
       const result = store.deleteConversations(peerKeys);
       mediaStore.sweep(store.mediaReferences());
+      pttStore.sweep(store.mediaReferences());
       processor.clearPeers(result.deletedPeerKeys);
       broadcast(CHANNELS.deleted, {
         peerKeys: result.deletedPeerKeys,
@@ -198,14 +200,17 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
       const previousPath = storagePath;
       try {
         mediaStore.copyReferencedTo(nextPath, store.mediaReferences());
+        pttStore.copyReferencedTo(nextPath, store.mediaReferences());
         store.changeRoot(nextPath);
         mediaStore.setRoot(nextPath);
+        pttStore.setRoot(nextPath);
         writeStoragePath(configDir, nextPath);
         storagePath = nextPath;
         return { canceled: false, path: storagePath };
       } catch (error) {
         try { store.changeRoot(previousPath); } catch (restoreError) { logger.error?.('[QQ Local Recall] storage rollback failed:', restoreError); }
         try { mediaStore.setRoot(previousPath); } catch (restoreError) { logger.error?.('[QQ Local Recall] media rollback failed:', restoreError); }
+        try { pttStore.setRoot(previousPath); } catch (restoreError) { logger.error?.('[QQ Local Recall] ptt rollback failed:', restoreError); }
         throw error;
       }
     });
