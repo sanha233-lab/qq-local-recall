@@ -41,7 +41,6 @@ class RecallProcessor {
     this.pendingMediaLimit = cacheLimit;
     this.cache = new CandidateCache(cacheLimit, messageId => this.pendingMedia.delete(messageId));
     this.preventSelf = preventSelf;
-    this.pttLastMsgId = new Map();
     this.pttDownloads = new Map();
     this._diagLog = diagLog;
   }
@@ -77,7 +76,6 @@ class RecallProcessor {
       const message = messages[index];
       if (!getRecallInfo(message)) {
         this.cache.set(message);
-        this.indexPttMessage(message);
         continue;
       }
       const recovered = this.restore(message);
@@ -108,7 +106,6 @@ class RecallProcessor {
       const message = container.msgList[index];
       if (!getRecallInfo(message)) {
         this.cache.set(message);
-        this.indexPttMessage(message);
         continue;
       }
       const recovered = this.restore(message);
@@ -216,26 +213,6 @@ class RecallProcessor {
     } catch { /* file may not exist yet or already cleaned up */ }
   }
 
-  // Update pttLastMsgId secondary index when a voice message is cached.
-  indexPttMessage(message) {
-    if (!message || !Array.isArray(message.elements)) return;
-    const hasPtt = message.elements.some(el => {
-      const et = Number(el?.elementType);
-      return et === 3 || et === 4;
-    });
-    const hasPttKey = !hasPtt && message.elements.some(el => el && Object.keys(el).some(k => /ptt/i.test(k)));
-    if (hasPtt || hasPttKey) {
-      this._log({ ev: 'indexPtt', msgId: message.msgId, hasPtt, hasPttKey,
-        types: message.elements.map(e => ({ et: e?.elementType, k: Object.keys(e || {}) })) });
-    }
-    if (!hasPtt) return;
-    const chatType = Number(message.chatType);
-    const peerUid = String(message.peerUid || '');
-    const senderUid = String(message.senderUid || '');
-    if (!peerUid || !senderUid) return;
-    this.pttLastMsgId.set(`${chatType}:${peerUid}:${senderUid}`, String(message.msgId));
-  }
-
   noticeFor(recovered, kind) {
     const local = recovered.qqLocalRecall || {};
     const notice = {
@@ -264,29 +241,10 @@ class RecallProcessor {
       origMsgId: info.origMsgId, origMsgSenderUid: info.origMsgSenderUid,
       infoKeys: Object.keys(info) });
 
-    if (!stored && !cached && info.origMsgSenderUid) {
-      const chatType = Number(recallMessage.chatType);
-      const peerUid = String(recallMessage.peerUid || '');
-      const pttKey = `${chatType}:${peerUid}:${info.origMsgSenderUid}`;
-      const voiceMsgId = this.pttLastMsgId.get(pttKey);
-      this._log({ ev: 'pttFallback', pttKey, voiceMsgId: voiceMsgId || null,
-        pttIndexSize: this.pttLastMsgId.size });
-      if (voiceMsgId) {
-        const voiceCached = this.cache.get(voiceMsgId);
-        const voiceStored = this.store.get(voiceMsgId);
-        // The recall gray tip is built on the original message skeleton, so its
-        // msgTime must match the voice candidate; otherwise the recall belongs to a
-        // different (unsupported) message and restoring the voice would persist a
-        // record whose content never matched the recalled message.
-        const candidate = voiceCached || voiceStored?.message;
-        const sameOrigin = candidate && String(candidate.msgTime || '') !== ''
-          && String(candidate.msgTime) === String(recallMessage.msgTime || '');
-        if ((voiceCached || voiceStored) && sameOrigin) {
-          return this.restoreWithId(recallMessage, info, voiceMsgId, voiceCached, voiceStored);
-        }
-      }
-    }
-
+    // Voice recalls resolve through the exact message id like every other kind.
+    // A "latest voice from the same sender" fallback used to live here; field
+    // diagnostics showed 130 of its 131 candidate hits pointed at a different
+    // message than the one recalled, so it only ever misattributed content.
     return this.restoreWithId(recallMessage, info, messageId, cached, stored);
   }
 

@@ -74,7 +74,7 @@ test('readAmrDuration rejects AMR-WB, non-AMR bytes and missing files', () => {
   assert.equal(readAmrDuration(path.join(dir, 'missing.amr')), 0);
 });
 
-test('recall of an unknown message does not fall back to a voice with a different msgTime', () => {
+test('recall of an unknown message never restores another message from the same sender', () => {
   const store = makeStore();
   const processor = new RecallProcessor({ store });
   processor.processEvent({ cmdName: 'onRecvMsg', payload: { msgList: [textMessage({
@@ -82,8 +82,11 @@ test('recall of an unknown message does not fall back to a voice with a differen
     elements: [{ elementType: 4, pttElement: { md5HexStr: 'x' } }],
   })] } });
 
+  // Recall for a message that was never cached (e.g. an unsupported file
+  // message): even with the same sender and msgTime it must not resurrect the
+  // sender's voice message as the recalled content.
   const result = processor.processEvent({ cmdName: 'onMsgInfoListUpdate', payload: { msgList: [recallMessage({
-    msgId: 'x9', msgTime: '9000', recallTime: '9100',
+    msgId: 'x9', msgTime: '1000', recallTime: '1100',
     elements: [{ elementType: 8, grayTipElement: { subElementType: 1, revokeElement: {
       isSelfOperate: false, operatorNick: '好友', origMsgId: 'x9', origMsgSenderUid: 'u1',
     } } }],
@@ -94,7 +97,7 @@ test('recall of an unknown message does not fall back to a voice with a differen
   assert.equal(store.get('v1'), undefined);
 });
 
-test('voice fallback still recovers when the recall carries the original msgTime', () => {
+test('a voice recall matching the exact message id still recovers the voice', () => {
   const store = makeStore();
   const processor = new RecallProcessor({ store });
   processor.processEvent({ cmdName: 'onRecvMsg', payload: { msgList: [textMessage({
@@ -103,9 +106,9 @@ test('voice fallback still recovers when the recall carries the original msgTime
   })] } });
 
   const result = processor.processEvent({ cmdName: 'onMsgInfoListUpdate', payload: { msgList: [recallMessage({
-    msgId: 'x9', msgTime: '1000', recallTime: '1100',
+    msgId: 'v1', msgTime: '1000', recallTime: '1100',
     elements: [{ elementType: 8, grayTipElement: { subElementType: 1, revokeElement: {
-      isSelfOperate: false, operatorNick: '好友', origMsgId: 'x9', origMsgSenderUid: 'u1',
+      isSelfOperate: false, operatorNick: '好友', origMsgSenderUid: 'u1',
     } } }],
   })] } });
 
