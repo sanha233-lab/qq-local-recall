@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.4.6] - 2026-07-26
+
+### Changed
+
+- 渲染层 `MutationObserver` 回调改为按帧合并（`requestAnimationFrame`，无该 API 时降级为微任务）：QQ 一次 DOM 变更批次不再触发多次全量提示扫描与图片快照重克隆；批量撤回到达时对 `onRecovered` 载荷内全部消息 ID 只统一刷新一次，而不是逐条刷新。
+
+### Added
+
+- 管理页新增行为级测试（`test/manager-behavior.test.mjs`）：用真实 DOM/preload 桩件驱动 `manager.mjs` 实际运行，覆盖展开预览、单条/批量删除失败反馈、设置开关失败回滚、修改存储位置失败恢复等此前只靠源码正则做"冒烟"断言的路径，防止 1.4.2 那类接口未接通的问题被测试放过。
+
+### Verification
+
+- `npm test`: 149 tests passed.
+- `npm run check`: passed.
+
 ## [1.4.5] - 2026-07-26
 
 ### Added

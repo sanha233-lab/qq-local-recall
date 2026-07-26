@@ -19,6 +19,8 @@ test('renderer uses message-row native notices without detached toast or bubble 
   assert.match(source, /persistRenderedMedia/);
   assert.match(source, /createMediaRetryCoordinator/);
   assert.match(source, /memoryOnly === true/);
+  assert.match(source, /scheduleMarkVisibleMessages/);
+  assert.doesNotMatch(source, /new MutationObserver\(\(\) => markVisibleMessages\(\)\)/);
   assert.doesNotMatch(source, /setTimeout\(\(\) => settleRecovered/);
   assert.doesNotMatch(source, /qq-local-recall-toast/);
   assert.doesNotMatch(source, /qq-local-recall-badge/);

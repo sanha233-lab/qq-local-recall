@@ -99,22 +99,37 @@ const mediaRecovery = createMediaRetryCoordinator({
 
 installStyle();
 rememberVisiblePictures();
+
+// QQ's own DOM churn (scrolling, typing, animations) fires many mutations per
+// frame; coalesce them into a single markVisibleMessages() per frame instead
+// of a full-document rescan and re-clone for every mutation record.
+let markScheduled = false;
+function scheduleMarkVisibleMessages() {
+  if (markScheduled) return;
+  markScheduled = true;
+  const run = () => { markScheduled = false; markVisibleMessages(); };
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run);
+  else queueMicrotask(run);
+}
+
 window.qqLocalRecall?.onRecovered?.(payload => {
+  const memoryOnlyIds = [];
   for (const messageId of payload?.messageIds || []) {
     const id = String(messageId);
     const detail = payload?.recallNotices?.[id] || {
       kind: payload?.messageKinds?.[id] === 'picture' ? 'picture' : 'message',
     };
     recalledMessages.set(id, detail);
-    markVisibleMessages();
-    if (detail.memoryOnly === true) mediaRecovery.start(id);
+    if (detail.memoryOnly === true) memoryOnlyIds.push(id);
   }
+  markVisibleMessages();
+  for (const id of memoryOnlyIds) mediaRecovery.start(id);
 });
 window.qqLocalRecall?.onRecordsDeleted?.(payload => {
   for (const messageId of payload?.messageIds || []) replaceDeletedMessage(messageId);
 });
 
-const observer = new MutationObserver(() => markVisibleMessages());
+const observer = new MutationObserver(() => scheduleMarkVisibleMessages());
 observer.observe(document.documentElement, { childList: true, subtree: true });
 
 export async function onSettingWindowCreated(view) {
