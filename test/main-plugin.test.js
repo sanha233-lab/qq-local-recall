@@ -342,6 +342,42 @@ test('failed media migration keeps both stores on the previous root', async () =
   assert.equal(plugin.store.get('m1').message.elements[0].textElement.content, 'keep');
 });
 
+test('record-preview IPC returns persisted image bytes only for the owning peer', async () => {
+  const electron = fakeElectron();
+  const plugin = createPlugin({
+    electron, dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-main-')),
+    managerHtmlPath: 'manager.html', managerPreloadPath: 'manager-preload.js',
+  });
+  plugin.start();
+  const saved = plugin.mediaStore.saveBytes(PNG, 'image/png', true);
+  const reference = { ...saved };
+  delete reference.absolutePath;
+  plugin.store.save(mediaRecord('m1', 'friend:u1', reference));
+  const handler = electron.handlers.get('qq-local-recall:record-preview');
+
+  const preview = await handler({}, 'friend:u1', 'm1');
+  assert.equal(preview.mimeType, 'image/png');
+  assert.deepEqual(Buffer.from(preview.base64, 'base64'), PNG);
+
+  assert.equal(await handler({}, 'friend:u2', 'm1'), null);
+  assert.equal(await handler({}, 'friend:u1', 'no-such-id'), null);
+  assert.throws(() => handler({}, 'not-a-peer-key', 'm1'), /peerKey/);
+});
+
+test('qq-version IPC reports the verified version baseline', async () => {
+  const electron = fakeElectron();
+  const plugin = createPlugin({
+    electron, dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-main-')),
+    managerHtmlPath: 'manager.html', managerPreloadPath: 'manager-preload.js',
+  });
+  plugin.start();
+
+  const info = await electron.handlers.get('qq-local-recall:qq-version')({});
+
+  assert.equal(info.verified, '9.9.32-51246');
+  assert.equal(typeof info.current, 'string');
+});
+
 test('main plugin opens an isolated local manager window', async () => {
   const electron = fakeElectron();
   const plugin = createPlugin({

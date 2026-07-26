@@ -68,6 +68,16 @@ function publicReference(reference) {
   };
 }
 
+const VERIFIED_QQ_VERSION = '9.9.32-51246';
+const MAX_PREVIEW_BYTES = 8 * 1024 * 1024;
+
+function readCurrentQqVersion() {
+  try {
+    const configPath = path.join(path.dirname(process.execPath), 'versions', 'config.json');
+    return String(JSON.parse(fs.readFileSync(configPath, 'utf8')).curVersion || '');
+  } catch { return ''; }
+}
+
 function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHtmlPath, managerPreloadPath, logger = console }) {
   const { BrowserWindow, ipcMain, dialog } = electron;
   const store = new ConversationStore(dataDir);
@@ -125,11 +135,37 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
   function start() {
     if (started) return;
     started = true;
+    const currentQqVersion = readCurrentQqVersion();
+    if (currentQqVersion && currentQqVersion !== VERIFIED_QQ_VERSION) {
+      logger.warn?.(`[QQ Local Recall] 当前 QQ 版本 ${currentQqVersion} 未经验证（已验证 ${VERIFIED_QQ_VERSION}），插件可能失效`);
+    }
     ipcMain.handle(CHANNELS.list, () => store.listConversations());
     ipcMain.handle(CHANNELS.listRecords, (_event, peerKey) => {
       if (typeof peerKey !== 'string' || peerKey.length > 512) throw new TypeError('peerKey is invalid');
       return store.getRecordSummaries(peerKey);
     });
+    ipcMain.handle(CHANNELS.recordPreview, (_event, peerKey, msgId) => {
+      if (typeof peerKey !== 'string' || peerKey.length > 512 || !/^(friend|group):/.test(peerKey)) {
+        throw new TypeError('peerKey is invalid');
+      }
+      if (typeof msgId !== 'string' || msgId.length > 256) throw new TypeError('msgId is invalid');
+      const record = store.get(msgId);
+      if (!record || String(record.peer?.key) !== peerKey) return null;
+      for (const element of record.message?.elements || []) {
+        const reference = element?.qqLocalRecallMedia;
+        if (!reference || !(element.picElement || element.marketFaceElement)) continue;
+        if (Number(reference.sizeBytes) > MAX_PREVIEW_BYTES) return null;
+        try {
+          const absolutePath = mediaStore.resolve(reference);
+          return { mimeType: reference.mimeType, base64: fs.readFileSync(absolutePath).toString('base64') };
+        } catch { return null; }
+      }
+      return null;
+    });
+    ipcMain.handle(CHANNELS.qqVersion, () => ({
+      current: readCurrentQqVersion(),
+      verified: VERIFIED_QQ_VERSION,
+    }));
     ipcMain.handle(CHANNELS.delete, (_event, value) => {
       const peerKeys = validatePeerKeys(value);
       const result = store.deleteConversations(peerKeys);

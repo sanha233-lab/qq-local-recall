@@ -55,7 +55,7 @@ class ConversationStore {
     this.diagnostics.length = 0;
 
     for (const name of fs.readdirSync(this.recordsDir)) {
-      if (!/^[a-f0-9]{64}\.json$/.test(name) && name !== 'broken.json') continue;
+      if (!/^[a-f0-9]{64}\.json$/.test(name)) continue;
       const filePath = path.join(this.recordsDir, name);
       try {
         const document = JSON.parse(fs.readFileSync(filePath, 'utf8'), reviveMap);
@@ -69,6 +69,9 @@ class ConversationStore {
         }
       } catch (error) {
         this.diagnostics.push({ file: name, error: String(error.message || error) });
+        // Move the unreadable file aside so a new record for the same peer cannot
+        // silently overwrite it; the backup stays recoverable by hand.
+        try { fs.renameSync(filePath, `${filePath}.corrupt-${Date.now()}`); } catch { /* keep in place */ }
       }
     }
   }
@@ -155,6 +158,7 @@ class ConversationStore {
       const source = path.join(this.recordsDir, name);
       const destination = path.join(nextRecordsDir, name);
       if (!fs.existsSync(destination)) fs.copyFileSync(source, destination);
+      else this.mergeRecordFiles(source, destination);
     }
     this.rootDir = nextRoot;
     this.recordsDir = nextRecordsDir;
@@ -162,9 +166,42 @@ class ConversationStore {
     return this.rootDir;
   }
 
+  // Called when returning to a storage root that already holds a file for the
+  // same peer: current-session records win, records written while the target
+  // root was previously active are appended instead of being silently dropped.
+  mergeRecordFiles(sourcePath, destinationPath) {
+    let sourceDoc;
+    try {
+      sourceDoc = JSON.parse(fs.readFileSync(sourcePath, 'utf8'), reviveMap);
+    } catch {
+      return;
+    }
+    let destinationDoc;
+    try {
+      destinationDoc = JSON.parse(fs.readFileSync(destinationPath, 'utf8'), reviveMap);
+    } catch {
+      try { fs.renameSync(destinationPath, `${destinationPath}.corrupt-${Date.now()}`); } catch { /* ignore */ }
+      fs.copyFileSync(sourcePath, destinationPath);
+      return;
+    }
+    if (!Array.isArray(sourceDoc?.records) || !Array.isArray(destinationDoc?.records)) {
+      fs.copyFileSync(sourcePath, destinationPath);
+      return;
+    }
+    const known = new Set(sourceDoc.records.map(record => String(record?.msgId)));
+    const merged = sourceDoc.records.concat(
+      destinationDoc.records.filter(record => record?.msgId && !known.has(String(record.msgId))),
+    );
+    const document = { schemaVersion: 1, peer: sourceDoc.peer, records: merged };
+    const tempPath = `${destinationPath}.${process.pid}.tmp`;
+    fs.writeFileSync(tempPath, `${JSON.stringify(document, jsonMap, 2)}\n`, 'utf8');
+    fs.renameSync(tempPath, destinationPath);
+  }
+
   listConversations() {
     return [...this.conversations.entries()].map(([peerKey, entry]) => {
-      const stats = fs.statSync(entry.filePath);
+      let sizeBytes = 0;
+      try { sizeBytes = fs.statSync(entry.filePath).size; } catch { /* file missing or locked */ }
       const last = entry.records.reduce((value, record) => {
         const time = Number(record.recallTime || 0);
         return time > value ? time : value;
@@ -175,7 +212,7 @@ class ConversationStore {
         id: entry.peer.type === 'friend' ? (peerAccount(entry) || entry.peer.id) : entry.peer.id,
         name: peerDisplayName(entry),
         count: entry.records.length,
-        sizeBytes: stats.size,
+        sizeBytes,
         lastRecallTime: last ? String(last) : '',
       };
     }).sort((left, right) => right.sizeBytes - left.sizeBytes || left.name.localeCompare(right.name, 'zh-CN'));
@@ -187,11 +224,25 @@ class ConversationStore {
     return entry.records.map(record => {
       const elements = record?.message?.elements || [];
       let kind = 'text';
+      let text = '';
+      let durationSeconds = 0;
+      let hasMediaPreview = false;
       for (const el of elements) {
-        if (el?.pttElement) { kind = 'voice'; break; }
-        if (el?.picElement || el?.marketFaceElement) { kind = 'picture'; break; }
+        if (el?.textElement?.content) text += String(el.textElement.content);
+        if (kind === 'text' && el?.pttElement) kind = 'voice';
+        else if (kind === 'text' && (el?.picElement || el?.marketFaceElement)) kind = 'picture';
+        if (el?.pttElement && Number(el.pttElement.duration) > 0) durationSeconds = Number(el.pttElement.duration);
+        if ((el?.picElement || el?.marketFaceElement) && el?.qqLocalRecallMedia) hasMediaPreview = true;
       }
-      return { msgId: String(record.msgId), recallTime: record.recallTime ? String(record.recallTime) : '', kind };
+      if (text.length > 60) text = `${text.slice(0, 60)}…`;
+      return {
+        msgId: String(record.msgId),
+        recallTime: record.recallTime ? String(record.recallTime) : '',
+        kind,
+        text,
+        durationSeconds,
+        hasMediaPreview,
+      };
     });
   }
 

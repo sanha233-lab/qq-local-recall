@@ -16,6 +16,7 @@ const elements = {
   changeStorage: document.getElementById('change-storage'),
   networkMediaRecovery: document.getElementById('network-media-recovery'),
   preventSelf: document.getElementById('prevent-self'),
+  versionWarning: document.getElementById('version-warning'),
 };
 
 const KIND_LABEL = { voice: '语音', picture: '图片', text: '文字' };
@@ -53,6 +54,35 @@ function buildDetailRows(peerKey, records) {
     kindSpan.className = `record-kind kind-${rec.kind}`;
     kindSpan.textContent = KIND_LABEL[rec.kind] || rec.kind;
 
+    const contentSpan = document.createElement('span');
+    contentSpan.className = 'record-content';
+    if (rec.kind === 'voice' && Number(rec.durationSeconds) > 0) {
+      contentSpan.textContent = `${rec.durationSeconds}″${rec.text ? ` ${rec.text}` : ''}`;
+    } else if (rec.text) {
+      contentSpan.textContent = rec.text;
+      contentSpan.title = rec.text;
+    }
+
+    let thumb = null;
+    if (rec.kind === 'picture' && rec.hasMediaPreview) {
+      thumb = document.createElement('img');
+      thumb.className = 'record-thumb';
+      thumb.alt = '图片预览';
+      thumb.hidden = true;
+      if (rec.previewUrl) {
+        thumb.src = rec.previewUrl;
+        thumb.hidden = false;
+      } else {
+        const img = thumb;
+        api.getRecordPreview(peerKey, rec.msgId).then(preview => {
+          if (!preview?.base64) return;
+          rec.previewUrl = `data:${preview.mimeType};base64,${preview.base64}`;
+          img.src = rec.previewUrl;
+          img.hidden = false;
+        }).catch(() => {});
+      }
+    }
+
     const delBtn = document.createElement('button');
     delBtn.className = 'record-delete';
     delBtn.type = 'button';
@@ -72,7 +102,9 @@ function buildDetailRows(peerKey, records) {
       }
     });
 
-    item.append(timeSpan, kindSpan, delBtn);
+    item.append(timeSpan, kindSpan);
+    if (thumb) item.append(thumb);
+    item.append(contentSpan, delBtn);
     td.appendChild(item);
     tr.appendChild(td);
     return tr;
@@ -186,6 +218,16 @@ async function loadStoragePath() {
   }
 }
 
+async function loadVersionInfo() {
+  try {
+    const info = await api.getQqVersion();
+    if (info?.current && info.current !== info.verified) {
+      elements.versionWarning.textContent = `当前 QQ 版本 ${info.current} 未经本插件验证（已验证：${info.verified}），拦截功能可能失效。`;
+      elements.versionWarning.hidden = false;
+    }
+  } catch { /* 版本信息读取失败时不打扰用户 */ }
+}
+
 async function loadSettings() {
   try {
     const settings = await api.getSettings();
@@ -266,4 +308,4 @@ elements.preventSelf.addEventListener('change', async () => {
 });
 api.onRecordsDeleted(() => load());
 
-await Promise.all([load(), loadStoragePath(), loadSettings()]);
+await Promise.all([load(), loadStoragePath(), loadSettings(), loadVersionInfo()]);

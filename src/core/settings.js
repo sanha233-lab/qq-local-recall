@@ -10,13 +10,21 @@ function settingsFile(configDir) {
 }
 
 function readSettings(configDir) {
+  let raw;
   try {
-    const document = JSON.parse(fs.readFileSync(settingsFile(configDir), 'utf8'));
-    if (typeof document.networkMediaRecovery !== 'boolean') return { ...DEFAULT_SETTINGS };
+    raw = fs.readFileSync(settingsFile(configDir), 'utf8');
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+  try {
+    const document = JSON.parse(raw);
+    if (typeof document.networkMediaRecovery !== 'boolean') throw new TypeError('invalid settings document');
     const preventSelf = typeof document.preventSelf === 'boolean' ? document.preventSelf : false;
     return { version: 1, networkMediaRecovery: document.networkMediaRecovery, preventSelf };
   } catch {
-    return { ...DEFAULT_SETTINGS };
+    // An existing-but-corrupt file must not silently re-enable the
+    // privacy-relevant network recovery switch; fall back to the off state.
+    return { version: 1, networkMediaRecovery: false, preventSelf: false };
   }
 }
 

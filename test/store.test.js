@@ -79,17 +79,21 @@ test('ConversationStore deletes selected conversations and their indexes', () =>
   assert.equal(store.get('m2').msgId, 'm2');
 });
 
-test('ConversationStore ignores a corrupt conversation file and reports it', () => {
+test('ConversationStore reports a corrupt conversation file and moves it aside as a backup', () => {
   const root = tempDir();
   const recordsDir = path.join(root, 'records');
   fs.mkdirSync(recordsDir, { recursive: true });
-  fs.writeFileSync(path.join(recordsDir, 'broken.json'), '{not-json', 'utf8');
+  const brokenName = `${'b'.repeat(64)}.json`;
+  fs.writeFileSync(path.join(recordsDir, brokenName), '{not-json', 'utf8');
 
   const store = new ConversationStore(root);
 
   assert.equal(store.listConversations().length, 0);
   assert.equal(store.diagnostics.length, 1);
-  assert.equal(fs.existsSync(path.join(recordsDir, 'broken.json')), true);
+  assert.equal(fs.existsSync(path.join(recordsDir, brokenName)), false);
+  const backup = fs.readdirSync(recordsDir).find(name => name.startsWith(`${brokenName}.corrupt-`));
+  assert.ok(backup, 'corrupt file should be renamed to a .corrupt-* backup');
+  assert.equal(fs.readFileSync(path.join(recordsDir, backup), 'utf8'), '{not-json');
 });
 
 test('ConversationStore hashes peer keys instead of using them as paths', () => {
@@ -161,6 +165,58 @@ test('ConversationStore getRecordSummaries returns kind per element type', () =>
   assert.equal(summaries.find(s => s.msgId === 'v1').kind, 'voice');
   assert.equal(summaries.find(s => s.msgId === 'p1').kind, 'picture');
   assert.equal(summaries.find(s => s.msgId === 't1').kind, 'text');
+});
+
+test('ConversationStore getRecordSummaries includes text snippet, voice duration and preview flag', () => {
+  const store = new ConversationStore(tempDir());
+  const voice = record('v1', 'friend:u1');
+  voice.message.elements = [{ elementType: 4, pttElement: { duration: 7 } }];
+  const pic = record('p1', 'friend:u1');
+  pic.message.elements = [{
+    elementType: 2, picElement: {},
+    qqLocalRecallMedia: { sha256: 'a'.repeat(64), relativePath: `media/${'a'.repeat(64)}.png`, mimeType: 'image/png', sizeBytes: 10 },
+  }];
+  const long = record('t1', 'friend:u1');
+  long.message.elements = [{ elementType: 1, textElement: { content: '很'.repeat(80) } }];
+  store.save(voice);
+  store.save(pic);
+  store.save(long);
+
+  const summaries = store.getRecordSummaries('friend:u1');
+  assert.equal(summaries.find(s => s.msgId === 'v1').durationSeconds, 7);
+  assert.equal(summaries.find(s => s.msgId === 'v1').hasMediaPreview, false);
+  assert.equal(summaries.find(s => s.msgId === 'p1').hasMediaPreview, true);
+  const snippet = summaries.find(s => s.msgId === 't1').text;
+  assert.equal(snippet.length, 61);
+  assert.equal(snippet.endsWith('…'), true);
+});
+
+test('ConversationStore merges records when switching back to a previously used root', () => {
+  const rootA = tempDir();
+  const rootB = path.join(tempDir(), 'root-b');
+  const store = new ConversationStore(rootA);
+  store.save(record('m1'));
+
+  store.changeRoot(rootB);
+  store.save(record('m2'));
+  store.changeRoot(rootA);
+
+  assert.equal(store.get('m1').message.msgId, 'm1');
+  assert.equal(store.get('m2').message.msgId, 'm2');
+  assert.equal(store.listConversations()[0].count, 2);
+});
+
+test('ConversationStore listConversations tolerates a record file missing on disk', () => {
+  const store = new ConversationStore(tempDir());
+  store.save(record('m1'));
+  const fileName = fs.readdirSync(store.recordsDir).find(name => name.endsWith('.json'));
+  fs.rmSync(path.join(store.recordsDir, fileName));
+
+  const rows = store.listConversations();
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].sizeBytes, 0);
+  assert.equal(rows[0].count, 1);
 });
 
 

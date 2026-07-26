@@ -3,6 +3,8 @@
 const CHANNELS = Object.freeze({
   list: 'qq-local-recall:list-conversations',
   listRecords: 'qq-local-recall:list-records',
+  recordPreview: 'qq-local-recall:record-preview',
+  qqVersion: 'qq-local-recall:qq-version',
   delete: 'qq-local-recall:delete-conversations',
   deleteRecord: 'qq-local-recall:delete-record',
   deleted: 'qq-local-recall:records-deleted',

@@ -12,17 +12,19 @@ function tempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-settings-'));
 }
 
-test('settings default network media recovery to enabled for missing or invalid files', () => {
+test('settings default network media recovery to enabled only when no file exists', () => {
   const missing = tempDir();
   assert.deepEqual(readSettings(missing), { version: 1, networkMediaRecovery: true, preventSelf: false });
+});
 
+test('a corrupt settings file falls back to the conservative network-recovery-off state', () => {
   const invalid = tempDir();
   fs.writeFileSync(path.join(invalid, 'settings.json'), '{broken', 'utf8');
-  assert.deepEqual(readSettings(invalid), { version: 1, networkMediaRecovery: true, preventSelf: false });
+  assert.deepEqual(readSettings(invalid), { version: 1, networkMediaRecovery: false, preventSelf: false });
 
   const missingField = tempDir();
   fs.writeFileSync(path.join(missingField, 'settings.json'), '{"version":1}', 'utf8');
-  assert.deepEqual(readSettings(missingField), { version: 1, networkMediaRecovery: true, preventSelf: false });
+  assert.deepEqual(readSettings(missingField), { version: 1, networkMediaRecovery: false, preventSelf: false });
 });
 
 test('settings persist a disabled network recovery flag atomically', () => {
