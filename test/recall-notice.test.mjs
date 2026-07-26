@@ -27,6 +27,9 @@ test('formatRecallNotice distinguishes member, administrator and group owner ope
     kind: 'message', operatorName: '成员名片', operatorRole: 0, senderName: '成员昵称',
     operatorUid: 'same-uid', senderUid: 'same-uid',
   }), '成员名片 尝试撤回此消息');
+  assert.equal(formatRecallNotice({
+    kind: 'video', operatorName: '小王', operatorRole: 0, senderName: '小王',
+  }), '小王 尝试撤回此视频');
 });
 
 class FakeElement {

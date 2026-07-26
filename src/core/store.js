@@ -230,8 +230,10 @@ class ConversationStore {
       for (const el of elements) {
         if (el?.textElement?.content) text += String(el.textElement.content);
         if (kind === 'text' && el?.pttElement) kind = 'voice';
+        else if (kind === 'text' && el?.videoElement) kind = 'video';
         else if (kind === 'text' && (el?.picElement || el?.marketFaceElement)) kind = 'picture';
         if (el?.pttElement && Number(el.pttElement.duration) > 0) durationSeconds = Number(el.pttElement.duration);
+        if (el?.videoElement && Number(el.videoElement.fileTime) > 0) durationSeconds = Number(el.videoElement.fileTime);
         if ((el?.picElement || el?.marketFaceElement) && el?.qqLocalRecallMedia) hasMediaPreview = true;
       }
       if (text.length > 60) text = `${text.slice(0, 60)}…`;

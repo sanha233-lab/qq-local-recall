@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const {
-  MAX_MEDIA_BYTES, MediaStore, PttStore, readPngDimensions, validateAspectRatio,
+  MAX_MEDIA_BYTES, MediaStore, PttStore, VideoStore, readPngDimensions, validateAspectRatio,
 } = require('./core/media-store');
 const { RecallProcessor } = require('./core/processor');
 const { fetchQqMedia } = require('./core/qq-media-fetch');
@@ -83,6 +83,7 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
   const store = new ConversationStore(dataDir);
   const mediaStore = new MediaStore(dataDir);
   const pttStore = new PttStore(dataDir);
+  const videoStore = new VideoStore(dataDir);
   const configDir = path.resolve(storageConfigDir);
   let settings = readSettings(configDir);
   let storagePath = path.resolve(dataDir);
@@ -90,7 +91,7 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
   const diagLog = fs.existsSync(path.join(dataDir, 'ptt-debug.enabled'))
     ? entry => fs.appendFileSync(diagPath, JSON.stringify({ t: Date.now(), ...entry }) + '\n')
     : null;
-  const processor = new RecallProcessor({ store, mediaStore, pttStore, cacheLimit: 10000, preventSelf: settings.preventSelf, diagLog });
+  const processor = new RecallProcessor({ store, mediaStore, pttStore, videoStore, cacheLimit: 10000, preventSelf: settings.preventSelf, diagLog });
   const patchedContents = new WeakSet();
   let managerWindow = null;
   let started = false;
@@ -171,6 +172,7 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
       const result = store.deleteConversations(peerKeys);
       mediaStore.sweep(store.mediaReferences());
       pttStore.sweep(store.mediaReferences());
+      videoStore.sweep(store.mediaReferences());
       processor.clearPeers(result.deletedPeerKeys);
       broadcast(CHANNELS.deleted, {
         peerKeys: result.deletedPeerKeys,
@@ -187,6 +189,7 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
       if (deleted) {
         mediaStore.sweep(store.mediaReferences());
         pttStore.sweep(store.mediaReferences());
+        videoStore.sweep(store.mediaReferences());
         broadcast(CHANNELS.deleted, { peerKeys: [peerKey], messageIds: [msgId] });
       }
       return { deleted };
@@ -263,9 +266,11 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
       try {
         mediaStore.copyReferencedTo(nextPath, store.mediaReferences());
         pttStore.copyReferencedTo(nextPath, store.mediaReferences());
+        videoStore.copyReferencedTo(nextPath, store.mediaReferences());
         store.changeRoot(nextPath);
         mediaStore.setRoot(nextPath);
         pttStore.setRoot(nextPath);
+        videoStore.setRoot(nextPath);
         writeStoragePath(configDir, nextPath);
         storagePath = nextPath;
         return { canceled: false, path: storagePath };
@@ -273,6 +278,7 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
         try { store.changeRoot(previousPath); } catch (restoreError) { logger.error?.('[QQ Local Recall] storage rollback failed:', restoreError); }
         try { mediaStore.setRoot(previousPath); } catch (restoreError) { logger.error?.('[QQ Local Recall] media rollback failed:', restoreError); }
         try { pttStore.setRoot(previousPath); } catch (restoreError) { logger.error?.('[QQ Local Recall] ptt rollback failed:', restoreError); }
+        try { videoStore.setRoot(previousPath); } catch (restoreError) { logger.error?.('[QQ Local Recall] video rollback failed:', restoreError); }
         throw error;
       }
     });

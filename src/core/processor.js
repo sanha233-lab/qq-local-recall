@@ -32,16 +32,18 @@ const {
 } = require('./recall');
 
 class RecallProcessor {
-  constructor({ store, mediaStore = null, pttStore = null, cacheLimit = 10000, preventSelf = false, diagLog = null }) {
+  constructor({ store, mediaStore = null, pttStore = null, videoStore = null, cacheLimit = 10000, preventSelf = false, diagLog = null }) {
     if (!store) throw new TypeError('store is required');
     this.store = store;
     this.mediaStore = mediaStore;
     this.pttStore = pttStore;
+    this.videoStore = videoStore;
     this.pendingMedia = new Map();
     this.pendingMediaLimit = cacheLimit;
     this.cache = new CandidateCache(cacheLimit, messageId => this.pendingMedia.delete(messageId));
     this.preventSelf = preventSelf;
     this.pttDownloads = new Map();
+    this.videoDownloads = new Map();
     this._diagLog = diagLog;
   }
 
@@ -88,9 +90,11 @@ class RecallProcessor {
           return et === 3 || et === 4;
         })
         ? 'voice'
-        : recovered.elements.some(element => element?.picElement)
-          ? 'picture'
-          : 'message';
+        : recovered.elements.some(element => element?.videoElement)
+          ? 'video'
+          : recovered.elements.some(element => element?.picElement)
+            ? 'picture'
+            : 'message';
       result.recallNotices[recoveredId] = this.noticeFor(recovered, result.messageKinds[recoveredId]);
       if (/(onMsgInfoListUpdate|onActiveMsgInfoUpdate)/.test(command)) {
         result.attemptedIds.push(String(recovered.msgId));
@@ -118,9 +122,11 @@ class RecallProcessor {
           return et === 3 || et === 4;
         })
         ? 'voice'
-        : recovered.elements.some(element => element?.picElement)
-          ? 'picture'
-          : 'message';
+        : recovered.elements.some(element => element?.videoElement)
+          ? 'video'
+          : recovered.elements.some(element => element?.picElement)
+            ? 'picture'
+            : 'message';
       result.recallNotices[recoveredId] = this.noticeFor(recovered, result.messageKinds[recoveredId]);
     }
     return result;
@@ -216,7 +222,7 @@ class RecallProcessor {
   // Called when QQ finishes downloading a rich-media file.
   processRichMediaDownload(notifyInfo) {
     this._log({ ev: 'richMediaDL', raw: this._safeStr(notifyInfo) });
-    if (!notifyInfo || !this.pttStore) return;
+    if (!notifyInfo) return;
     const filePath = String(notifyInfo.filePath || '');
     const msgId = String(notifyInfo.msgId || '');
     if (!filePath || !msgId) return;
@@ -224,15 +230,28 @@ class RecallProcessor {
       || /\.(amr|silk|slk)$/i.test(filePath)
       || Number(notifyInfo.downloadType) === 2;
     this._log({ ev: 'richMediaDL_isPtt', isPtt, filePath, msgId, downloadType: notifyInfo.downloadType });
-    if (!isPtt) return;
-    try {
-      const ref = this.pttStore.saveFile(filePath);
-      ref.duration = readAmrDuration(filePath);
-      this.pttDownloads.set(msgId, ref);
-      while (this.pttDownloads.size > this.pendingMediaLimit) {
-        this.pttDownloads.delete(this.pttDownloads.keys().next().value);
-      }
-    } catch { /* file may not exist yet or already cleaned up */ }
+    if (isPtt && this.pttStore) {
+      try {
+        const ref = this.pttStore.saveFile(filePath);
+        ref.duration = readAmrDuration(filePath);
+        this.pttDownloads.set(msgId, ref);
+        while (this.pttDownloads.size > this.pendingMediaLimit) {
+          this.pttDownloads.delete(this.pttDownloads.keys().next().value);
+        }
+      } catch { /* file may not exist yet or already cleaned up */ }
+      return;
+    }
+    // Video bodies land under nt_data\Video\...\Ori\<md5>.mp4 once played.
+    const isVideo = /[\\/]Video[\\/]/i.test(filePath) && /\.mp4$/i.test(filePath);
+    if (isVideo && this.videoStore) {
+      try {
+        const ref = this.videoStore.saveFile(filePath);
+        this.videoDownloads.set(msgId, ref);
+        while (this.videoDownloads.size > this.pendingMediaLimit) {
+          this.videoDownloads.delete(this.videoDownloads.keys().next().value);
+        }
+      } catch { /* oversized, unsupported or already cleaned up */ }
+    }
   }
 
   noticeFor(recovered, kind) {
@@ -299,6 +318,22 @@ class RecallProcessor {
       }
     }
 
+    // Attach the saved video body if QQ downloaded it during this session
+    const videoDownload = this.videoDownloads.get(messageId);
+    if (videoDownload) {
+      for (const element of (recovered.elements || [])) {
+        if (Number(element?.elementType) === 5 && element.videoElement) {
+          element.videoElement.filePath = videoDownload.absolutePath;
+          element.videoElement.fileSize = String(videoDownload.sizeBytes);
+          element.qqLocalRecallMedia = {
+            sha256: videoDownload.sha256,
+            relativePath: videoDownload.relativePath,
+            sizeBytes: videoDownload.sizeBytes,
+          };
+        }
+      }
+    }
+
     const mediaCount = message => (message?.elements || [])
       .filter(element => element?.picElement || element?.marketFaceElement).length;
     if (mediaCount(original) > mediaCount(persistableOriginal)) {
@@ -331,6 +366,18 @@ class RecallProcessor {
             }
           }
         }
+        if (videoDownload) {
+          for (const element of (persistable.elements || [])) {
+            if (Number(element?.elementType) === 5 && element.videoElement) {
+              element.videoElement.fileSize = String(videoDownload.sizeBytes);
+              element.qqLocalRecallMedia = {
+                sha256: videoDownload.sha256,
+                relativePath: videoDownload.relativePath,
+                sizeBytes: videoDownload.sizeBytes,
+              };
+            }
+          }
+        }
         this.store.save({
           msgId: String(persistable.msgId),
           peer,
@@ -356,6 +403,14 @@ class RecallProcessor {
         try {
           const absolutePath = this.pttStore.resolve(reference.relativePath);
           element.pttElement.filePath = absolutePath;
+          return [element];
+        } catch { return []; }
+      }
+      if (et === 5 && this.videoStore) {
+        if (!element.videoElement) element.videoElement = {};
+        try {
+          const absolutePath = this.videoStore.resolve(reference.relativePath);
+          element.videoElement.filePath = absolutePath;
           return [element];
         } catch { return []; }
       }

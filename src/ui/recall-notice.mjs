@@ -19,7 +19,9 @@ export function findMessageContent(document, messageId) {
 }
 
 export function formatRecallNotice(detail = {}) {
-  const subject = detail.kind === 'picture' ? '图片' : detail.kind === 'voice' ? '语音' : '消息';
+  const subject = detail.kind === 'picture' ? '图片'
+    : detail.kind === 'voice' ? '语音'
+      : detail.kind === 'video' ? '视频' : '消息';
   const operatorName = String(detail.operatorName || '对方').trim() || '对方';
   const senderName = String(detail.senderName || '').trim();
   const operatorUid = String(detail.operatorUid || '');

@@ -156,14 +156,19 @@ test('ConversationStore getRecordSummaries returns kind per element type', () =>
   voice.message.elements = [{ elementType: 4, pttElement: {} }];
   const pic = record('p1', 'friend:u1');
   pic.message.elements = [{ elementType: 2, picElement: {} }];
+  const video = record('d1', 'friend:u1');
+  video.message.elements = [{ elementType: 5, videoElement: { fileTime: 8 } }];
   const txt = record('t1', 'friend:u1');
   store.save(voice);
   store.save(pic);
+  store.save(video);
   store.save(txt);
 
   const summaries = store.getRecordSummaries('friend:u1');
   assert.equal(summaries.find(s => s.msgId === 'v1').kind, 'voice');
   assert.equal(summaries.find(s => s.msgId === 'p1').kind, 'picture');
+  assert.equal(summaries.find(s => s.msgId === 'd1').kind, 'video');
+  assert.equal(summaries.find(s => s.msgId === 'd1').durationSeconds, 8);
   assert.equal(summaries.find(s => s.msgId === 't1').kind, 'text');
 });
 

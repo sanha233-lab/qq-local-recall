@@ -7,8 +7,10 @@ const path = require('node:path');
 
 const {
   MAX_MEDIA_BYTES,
+  MAX_VIDEO_BYTES,
   MediaStore,
   PttStore,
+  VideoStore,
   parseAppImagePath,
   sniffImage,
 } = require('../src/core/media-store');
@@ -209,4 +211,52 @@ test('copyReferencedTo replaces a corrupt destination with the validated source 
   store.copyReferencedTo(nextRoot, [reference]);
 
   assert.deepEqual(fs.readFileSync(destination), PNG);
+});
+
+const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypisom video payload')]);
+
+test('VideoStore saveFile enforces MP4 magic, the 200 MiB cap and SHA-256 dedup', () => {
+  const store = new VideoStore(makeRoot('qq-local-recall-video-'));
+  const dir = makeRoot('qq-local-recall-video-src-');
+  const mp4 = path.join(dir, 'clip.mp4');
+  fs.writeFileSync(mp4, MP4);
+
+  const first = store.saveFile(mp4);
+  const second = store.saveFile(mp4);
+  assert.equal(first.relativePath, `video/${first.sha256}.mp4`);
+  assert.deepEqual(second, first);
+  assert.deepEqual(fs.readdirSync(store.videoDir), [`${first.sha256}.mp4`]);
+  assert.equal(store.resolve(first.relativePath), first.absolutePath);
+
+  const junk = path.join(dir, 'junk.mp4');
+  fs.writeFileSync(junk, Buffer.from('#!AMR\n not a video', 'latin1'));
+  assert.throws(() => store.saveFile(junk), /video/);
+
+  const oversized = path.join(dir, 'big.mp4');
+  const fd = fs.openSync(oversized, 'w');
+  fs.ftruncateSync(fd, MAX_VIDEO_BYTES + 1);
+  fs.closeSync(fd);
+  assert.throws(() => store.saveFile(oversized), /200 MiB/);
+});
+
+test('VideoStore sweep and copyReferencedTo handle only video references', () => {
+  const store = new VideoStore(makeRoot('qq-local-recall-video-'));
+  const dir = makeRoot('qq-local-recall-video-src-');
+  const keepSrc = path.join(dir, 'keep.mp4');
+  const orphanSrc = path.join(dir, 'orphan.mp4');
+  fs.writeFileSync(keepSrc, MP4);
+  fs.writeFileSync(orphanSrc, Buffer.concat([MP4, Buffer.from(' extra')]));
+  const keep = store.saveFile(keepSrc);
+  const orphan = store.saveFile(orphanSrc);
+  const imageReference = { relativePath: `media/${'a'.repeat(64)}.png` };
+  const nextRoot = makeRoot('qq-local-recall-video-next-');
+
+  store.copyReferencedTo(nextRoot, [keep, imageReference]);
+  assert.deepEqual(fs.readFileSync(path.join(nextRoot, keep.relativePath)), MP4);
+  assert.equal(fs.existsSync(path.join(nextRoot, orphan.relativePath)), false);
+
+  const removed = store.sweep([keep, imageReference]);
+  assert.deepEqual(removed, [orphan.relativePath]);
+  assert.equal(fs.existsSync(keep.absolutePath), true);
+  assert.equal(fs.existsSync(orphan.absolutePath), false);
 });

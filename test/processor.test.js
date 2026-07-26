@@ -6,6 +6,7 @@ const path = require('node:path');
 
 const { RecallProcessor, readAmrDuration } = require('../src/core/processor');
 const { ConversationStore } = require('../src/core/store');
+const { VideoStore } = require('../src/core/media-store');
 
 const AMR_PAYLOAD_SIZES = [12, 13, 15, 17, 19, 20, 26, 31, 5, 0, 0, 0, 0, 0, 0, 0];
 
@@ -648,4 +649,101 @@ test('RecallProcessor clears memory candidates for deleted conversations', () =>
   processor.processEvent(event);
 
   assert.ok(event.payload.msgList[0].elements[0].grayTipElement);
+});
+
+const MP4_BODY = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypisom video body')]);
+
+function makeQqVideoFiles() {
+  const qqDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-qq-'));
+  const bodyDir = path.join(qqDir, 'Video', '2026-07', 'Ori');
+  const thumbDir = path.join(qqDir, 'Video', '2026-07', 'Thumb');
+  fs.mkdirSync(bodyDir, { recursive: true });
+  fs.mkdirSync(thumbDir, { recursive: true });
+  const bodyPath = path.join(bodyDir, 'abc.mp4');
+  const thumbPath = path.join(thumbDir, 'abc_0.png');
+  fs.writeFileSync(bodyPath, MP4_BODY);
+  fs.writeFileSync(thumbPath, Buffer.from('thumb'));
+  return { bodyPath, thumbPath };
+}
+
+function videoMessage(msgId, videoElement) {
+  return textMessage({
+    msgId, msgTime: '1000',
+    elements: [{ elementType: 5, videoElement }],
+  });
+}
+
+test('a recalled played video keeps its saved body and strips the server file id', () => {
+  const store = makeStore();
+  const videoStore = new VideoStore(fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-video-root-')));
+  const processor = new RecallProcessor({ store, videoStore });
+  const { bodyPath, thumbPath } = makeQqVideoFiles();
+
+  processor.processEvent({ cmdName: 'onRecvMsg', payload: { msgList: [videoMessage('vid1', {
+    fileName: 'abc.mp4', filePath: bodyPath, fileTime: 8, fileSize: '19',
+    thumbPath: new Map([[0, thumbPath]]), fileUuid: 'server-file-id',
+  })] } });
+  processor.processRichMediaDownload({ msgId: 'vid1', filePath: bodyPath });
+
+  const event = { cmdName: 'onMsgInfoListUpdate', payload: { msgList: [recallMessage({
+    msgId: 'vid1', msgTime: '1000', recallTime: '1100',
+  })] } };
+  const result = processor.processEvent(event);
+
+  assert.deepEqual(result.recoveredIds, ['vid1']);
+  assert.equal(result.messageKinds.vid1, 'video');
+  assert.equal(result.recallNotices.vid1.kind, 'video');
+  const shown = event.payload.msgList[0].elements[0];
+  assert.equal(shown.videoElement.filePath.includes('video'), true);
+  assert.deepEqual(fs.readFileSync(shown.videoElement.filePath), MP4_BODY);
+
+  const persisted = store.get('vid1').message.elements[0];
+  assert.match(persisted.qqLocalRecallMedia.relativePath, /^video\/[a-f0-9]{64}\.mp4$/);
+  assert.equal(persisted.videoElement.fileUuid, undefined);
+});
+
+test('RecallProcessor resolves a persisted video body against the store after restart', () => {
+  const store = makeStore();
+  const videoStore = new VideoStore(fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-video-root-')));
+  const processor = new RecallProcessor({ store, videoStore });
+  const { bodyPath, thumbPath } = makeQqVideoFiles();
+  processor.processEvent({ cmdName: 'onRecvMsg', payload: { msgList: [videoMessage('vid1', {
+    fileName: 'abc.mp4', filePath: bodyPath, fileTime: 8, fileSize: '19',
+    thumbPath: new Map([[0, thumbPath]]),
+  })] } });
+  processor.processRichMediaDownload({ msgId: 'vid1', filePath: bodyPath });
+  processor.processEvent({ cmdName: 'onMsgInfoListUpdate', payload: { msgList: [recallMessage({
+    msgId: 'vid1', msgTime: '1000', recallTime: '1100',
+  })] } });
+
+  const reopened = new RecallProcessor({ store: new ConversationStore(store.rootDir), videoStore });
+  const fullList = { msgList: [recallMessage({ msgId: 'vid1', msgTime: '1000', recallTime: '1100' })] };
+  const result = reopened.processFullList(fullList);
+
+  assert.deepEqual(result.recoveredIds, ['vid1']);
+  assert.equal(result.messageKinds.vid1, 'video');
+  assert.deepEqual(fs.readFileSync(fullList.msgList[0].elements[0].videoElement.filePath), MP4_BODY);
+});
+
+test('an unplayed video recall is persisted from its thumbnail without a body reference', () => {
+  const store = makeStore();
+  const videoStore = new VideoStore(fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-video-root-')));
+  const processor = new RecallProcessor({ store, videoStore });
+  const { thumbPath } = makeQqVideoFiles();
+
+  processor.processEvent({ cmdName: 'onRecvMsg', payload: { msgList: [videoMessage('vid2', {
+    fileName: 'abc.mp4', filePath: path.join(os.tmpdir(), 'never-downloaded.mp4'),
+    fileTime: 10, fileSize: '1951226', thumbPath: new Map([[0, thumbPath]]),
+  })] } });
+
+  const result = processor.processEvent({ cmdName: 'onMsgInfoListUpdate', payload: { msgList: [recallMessage({
+    msgId: 'vid2', msgTime: '1000', recallTime: '1100',
+  })] } });
+
+  assert.deepEqual(result.recoveredIds, ['vid2']);
+  assert.equal(result.messageKinds.vid2, 'video');
+  const persisted = store.get('vid2').message.elements[0];
+  assert.equal(persisted.qqLocalRecallMedia, undefined);
+  assert.equal(Number(persisted.videoElement.fileTime), 10);
+  assert.equal(fs.existsSync(path.join(videoStore.videoDir, 'never-downloaded.mp4')), false);
 });

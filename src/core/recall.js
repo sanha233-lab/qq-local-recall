@@ -7,6 +7,7 @@ const SUPPORTED_ELEMENT_KEYS = new Map([
   [2, 'picElement'],
   [3, 'pttElement'],  // some QQ builds
   [4, 'pttElement'],  // QQ 9.9.32+
+  [5, 'videoElement'],
   [6, 'faceElement'],
   [7, 'replyElement'],
   [11, 'marketFaceElement'],
@@ -61,6 +62,19 @@ function hasLocalMarketFace(face) {
     .some(file => typeof file === 'string' && file.length > 0 && fs.existsSync(file));
 }
 
+// A video counts as locally available with either the downloaded body or its
+// thumbnail; unplayed videos only ever have the thumbnail on disk.
+function hasLocalVideo(video) {
+  const filePath = video?.filePath;
+  if (typeof filePath === 'string' && filePath.length > 0 && fs.existsSync(filePath)) return true;
+  const thumbs = video?.thumbPath instanceof Map
+    ? [...video.thumbPath.values()]
+    : Array.isArray(video?.thumbPath)
+      ? video.thumbPath.map(entry => Array.isArray(entry) ? entry[1] : entry)
+      : Object.values(video?.thumbPath || {});
+  return thumbs.some(file => typeof file === 'string' && file.length > 0 && fs.existsSync(file));
+}
+
 function sanitizeMessage(message, { requireLocalMedia = true, allowMissingMedia = false } = {}) {
   if (!message || typeof message !== 'object' || !message.msgId || !Array.isArray(message.elements)) {
     return null;
@@ -78,6 +92,8 @@ function sanitizeMessage(message, { requireLocalMedia = true, allowMissingMedia 
       && !allowMissingMedia) return [];
     if (requireLocalMedia && key === 'marketFaceElement' && !persistedMedia && !hasLocalMarketFace(element.marketFaceElement)
       && !allowMissingMedia) return [];
+    if (requireLocalMedia && key === 'videoElement' && !persistedMedia && !hasLocalVideo(element.videoElement)
+      && !allowMissingMedia) return [];
     const sanitized = { elementType: Number(element.elementType), [key]: clone(element[key]) };
     if (key === 'picElement') delete sanitized.picElement.originImageUrl;
     if (key === 'pttElement' && sanitized.pttElement) {
@@ -85,6 +101,10 @@ function sanitizeMessage(message, { requireLocalMedia = true, allowMissingMedia 
       delete sanitized.pttElement.bufKey;
       delete sanitized.pttElement.bufStr;
       delete sanitized.pttElement.urlExpired;
+    }
+    if (key === 'videoElement' && sanitized.videoElement) {
+      delete sanitized.videoElement.fileUuid;
+      delete sanitized.videoElement.import_rich_media_context;
     }
     if (element.elementId !== undefined) sanitized.elementId = clone(element.elementId);
     if (element.extBufForUI !== undefined) sanitized.extBufForUI = clone(element.extBufForUI);

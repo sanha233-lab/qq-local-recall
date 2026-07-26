@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.4.8] - 2026-07-27
+
+### Added
+
+- 视频防撤回：撤回的视频消息现在会被保留。播放过（本机已下载）的视频保存完整本体到记录目录 `video/`（单个上限 200 MiB，MP4 魔数校验，SHA-256 去重），重启后仍可恢复；未播放的视频保留缩略图与时长、大小信息。撤回提示显示"尝试撤回此视频"；管理页记录列表显示"视频"类型与时长；删除记录、更换存储目录时同步清理/迁移视频文件。基于 QQ 9.9.32-51246 实机结构采集（elementType 5 / videoElement，`onRichMediaDownloadComplete` 视频路径）实现；持久化时剥离 `fileUuid` 等服务端标识，与既有隐私策略一致。
+
+### Verification
+
+- `npm test`: 154 tests passed.
+- `npm run check`: passed.
+
 ## [1.4.7] - 2026-07-27
 
 ### Fixed

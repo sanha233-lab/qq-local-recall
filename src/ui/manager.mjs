@@ -19,7 +19,7 @@ const elements = {
   versionWarning: document.getElementById('version-warning'),
 };
 
-const KIND_LABEL = { voice: '语音', picture: '图片', text: '文字' };
+const KIND_LABEL = { voice: '语音', picture: '图片', video: '视频', text: '文字' };
 
 function visibleRows() {
   return filterRows(state.rows, state.query);
@@ -56,7 +56,7 @@ function buildDetailRows(peerKey, records) {
 
     const contentSpan = document.createElement('span');
     contentSpan.className = 'record-content';
-    if (rec.kind === 'voice' && Number(rec.durationSeconds) > 0) {
+    if ((rec.kind === 'voice' || rec.kind === 'video') && Number(rec.durationSeconds) > 0) {
       contentSpan.textContent = `${rec.durationSeconds}″${rec.text ? ` ${rec.text}` : ''}`;
     } else if (rec.text) {
       contentSpan.textContent = rec.text;

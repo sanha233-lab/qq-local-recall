@@ -283,6 +283,89 @@ class PttStore {
   }
 }
 
+const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
+const VIDEO_REFERENCE_PATH = /^video\/([a-f0-9]{64})\.mp4$/;
+
+class VideoStore {
+  constructor(rootDir) {
+    this.setRoot(rootDir);
+  }
+
+  setRoot(rootDir) {
+    this.rootDir = path.resolve(rootDir);
+    this.videoDir = path.join(this.rootDir, 'video');
+    fs.mkdirSync(this.videoDir, { recursive: true });
+    return this.rootDir;
+  }
+
+  saveFile(sourcePath) {
+    const stats = fs.statSync(sourcePath);
+    if (!stats.isFile()) throw new TypeError('video source must be a file');
+    if (stats.size > MAX_VIDEO_BYTES) throw new RangeError('video exceeds 200 MiB');
+    const bytes = fs.readFileSync(sourcePath);
+    // ISO BMFF: box size (4 bytes) then "ftyp"; QQ videos are MP4.
+    if (bytes.length < 12 || bytes.subarray(4, 8).toString('ascii') !== 'ftyp') {
+      throw new TypeError('unsupported video bytes');
+    }
+    const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
+    const relativePath = `video/${sha256}.mp4`;
+    const absolutePath = path.join(this.rootDir, 'video', `${sha256}.mp4`);
+    if (!fs.existsSync(absolutePath)) {
+      const tempPath = `${absolutePath}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+      try {
+        fs.writeFileSync(tempPath, bytes, { flag: 'wx' });
+        fs.renameSync(tempPath, absolutePath);
+      } finally {
+        fs.rmSync(tempPath, { force: true });
+      }
+    }
+    return { relativePath, absolutePath, sha256, sizeBytes: bytes.length };
+  }
+
+  resolve(relativePath) {
+    const rel = String(relativePath || '').replaceAll('\\', '/');
+    if (!VIDEO_REFERENCE_PATH.test(rel)) throw new TypeError('invalid video reference');
+    const absolutePath = path.resolve(this.rootDir, ...rel.split('/'));
+    const relative = path.relative(this.rootDir, absolutePath);
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+      throw new TypeError('invalid video reference path');
+    }
+    if (!fs.existsSync(absolutePath)) throw new Error('video file not found');
+    return absolutePath;
+  }
+
+  copyReferencedTo(nextRoot, references) {
+    const destVideoDir = path.join(path.resolve(nextRoot), 'video');
+    fs.mkdirSync(destVideoDir, { recursive: true });
+    for (const ref of references) {
+      const rel = String(ref?.relativePath || '').replaceAll('\\', '/');
+      if (!VIDEO_REFERENCE_PATH.test(rel)) continue;
+      try {
+        const src = this.resolve(rel);
+        const dest = path.join(path.resolve(nextRoot), ...rel.split('/'));
+        fs.copyFileSync(src, dest);
+      } catch { /* skip missing */ }
+    }
+  }
+
+  sweep(references) {
+    const retained = new Set(
+      references
+        .map(r => String(r?.relativePath || '').replaceAll('\\', '/'))
+        .filter(r => VIDEO_REFERENCE_PATH.test(r)),
+    );
+    const removed = [];
+    for (const name of fs.readdirSync(this.videoDir)) {
+      const rel = `video/${name}`;
+      if (!VIDEO_REFERENCE_PATH.test(rel) || retained.has(rel)) continue;
+      fs.rmSync(path.join(this.videoDir, name), { force: true });
+      removed.push(rel);
+    }
+    return removed;
+  }
+}
+
 module.exports = {
-  MAX_MEDIA_BYTES, MediaStore, PttStore, parseAppImagePath, readPngDimensions, sniffImage, validateAspectRatio,
+  MAX_MEDIA_BYTES, MAX_VIDEO_BYTES, MediaStore, PttStore, VideoStore,
+  parseAppImagePath, readPngDimensions, sniffImage, validateAspectRatio,
 };
