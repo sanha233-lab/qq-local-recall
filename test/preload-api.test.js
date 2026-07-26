@@ -18,7 +18,7 @@ test('preload API exposes only fixed local recall operations', async () => {
   api.onRecordsDeleted(value => { deleted = value; });
   listeners.get('qq-local-recall:records-deleted')({}, { peerKeys: ['friend:u1'] });
 
-  assert.deepEqual(Object.keys(api).sort(), ['deleteConversations', 'listConversations', 'onRecordsDeleted']);
+  assert.deepEqual(Object.keys(api).sort(), ['deleteConversations', 'deleteRecord', 'listConversations', 'listRecords', 'onRecordsDeleted']);
   assert.deepEqual(calls, [
     ['qq-local-recall:list-conversations', undefined],
     ['qq-local-recall:delete-conversations', ['friend:u1']],

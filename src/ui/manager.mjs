@@ -1,6 +1,6 @@
 import { filterRows, formatBytes, formatTime } from './manager-model.mjs';
 
-const state = { rows: [], selected: new Set(), query: '' };
+const state = { rows: [], selected: new Set(), query: '', expanded: new Set(), recordCache: new Map() };
 const api = window.qqLocalRecallManager;
 const elements = {
   search: document.getElementById('search'),
@@ -14,7 +14,10 @@ const elements = {
   storagePath: document.getElementById('storage-path'),
   changeStorage: document.getElementById('change-storage'),
   networkMediaRecovery: document.getElementById('network-media-recovery'),
+  preventSelf: document.getElementById('prevent-self'),
 };
+
+const KIND_LABEL = { voice: '语音', picture: '图片', text: '文字' };
 
 function visibleRows() {
   return filterRows(state.rows, state.query);
@@ -27,10 +30,62 @@ function updateActions(rows) {
   elements.selectAll.indeterminate = rows.some(row => state.selected.has(row.peerKey)) && !elements.selectAll.checked;
 }
 
+function buildDetailRows(peerKey, records) {
+  return records.map(rec => {
+    const tr = document.createElement('tr');
+    tr.className = 'record-row';
+    const td = document.createElement('td');
+    td.colSpan = 6;
+    const item = document.createElement('div');
+    item.className = 'record-item';
+
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'record-time';
+    timeSpan.textContent = formatTime(rec.recallTime);
+
+    const kindSpan = document.createElement('span');
+    kindSpan.className = `record-kind kind-${rec.kind}`;
+    kindSpan.textContent = KIND_LABEL[rec.kind] || rec.kind;
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'record-delete';
+    delBtn.type = 'button';
+    delBtn.textContent = '删除';
+    delBtn.setAttribute('aria-label', `删除此条${KIND_LABEL[rec.kind] || ''}记录`);
+    delBtn.addEventListener('click', async () => {
+      delBtn.disabled = true;
+      await api.deleteRecord(peerKey, rec.msgId);
+      const cached = state.recordCache.get(peerKey);
+      if (cached) {
+        const idx = cached.findIndex(r => r.msgId === rec.msgId);
+        if (idx >= 0) cached.splice(idx, 1);
+      }
+      const rowIdx = state.rows.findIndex(r => r.peerKey === peerKey);
+      if (rowIdx >= 0) {
+        state.rows[rowIdx] = { ...state.rows[rowIdx], count: state.rows[rowIdx].count - 1 };
+        if (state.rows[rowIdx].count <= 0) {
+          state.rows.splice(rowIdx, 1);
+          state.expanded.delete(peerKey);
+          state.recordCache.delete(peerKey);
+          state.selected.delete(peerKey);
+        }
+      }
+      render();
+    });
+
+    item.append(timeSpan, kindSpan, delBtn);
+    td.appendChild(item);
+    tr.appendChild(td);
+    return tr;
+  });
+}
+
 function render() {
   const rows = visibleRows();
   elements.body.replaceChildren();
   for (const row of rows) {
+    const isExpanded = state.expanded.has(row.peerKey);
+
     const tr = document.createElement('tr');
     const checkCell = document.createElement('td');
     checkCell.className = 'check';
@@ -48,11 +103,34 @@ function render() {
     const peerCell = document.createElement('td');
     const peer = document.createElement('div');
     peer.className = 'peer';
+    const nameRow = document.createElement('div');
+    nameRow.className = 'peer-name-row';
     const name = document.createElement('strong');
     name.textContent = row.name || row.id;
+    const expandBtn = document.createElement('button');
+    expandBtn.className = 'expand-btn';
+    expandBtn.type = 'button';
+    expandBtn.textContent = isExpanded ? '收起' : '展开';
+    expandBtn.setAttribute('aria-expanded', String(isExpanded));
+    expandBtn.setAttribute('aria-label', `${isExpanded ? '收起' : '展开'} ${row.name} 的记录`);
+    expandBtn.addEventListener('click', async () => {
+      if (state.expanded.has(row.peerKey)) {
+        state.expanded.delete(row.peerKey);
+        render();
+      } else {
+        state.expanded.add(row.peerKey);
+        if (!state.recordCache.has(row.peerKey)) {
+          expandBtn.disabled = true;
+          const records = await api.listRecords(row.peerKey);
+          state.recordCache.set(row.peerKey, records);
+        }
+        render();
+      }
+    });
+    nameRow.append(name, expandBtn);
     const id = document.createElement('span');
     id.textContent = row.id;
-    peer.append(name, id);
+    peer.append(nameRow, id);
     peerCell.appendChild(peer);
 
     const type = document.createElement('td');
@@ -68,6 +146,13 @@ function render() {
     time.textContent = formatTime(row.lastRecallTime);
     tr.append(checkCell, peerCell, type, count, size, time);
     elements.body.appendChild(tr);
+
+    if (isExpanded) {
+      const cached = state.recordCache.get(row.peerKey) || [];
+      for (const detailTr of buildDetailRows(row.peerKey, cached)) {
+        elements.body.appendChild(detailTr);
+      }
+    }
   }
 
   elements.status.hidden = rows.length > 0;
@@ -84,6 +169,8 @@ async function load() {
   try {
     state.rows = await api.listConversations();
     state.selected.clear();
+    state.expanded.clear();
+    state.recordCache.clear();
     render();
   } catch {
     elements.table.hidden = true;
@@ -104,8 +191,10 @@ async function loadSettings() {
   try {
     const settings = await api.getSettings();
     elements.networkMediaRecovery.checked = settings.networkMediaRecovery === true;
+    elements.preventSelf.checked = settings.preventSelf === true;
   } catch {
     elements.networkMediaRecovery.checked = true;
+    elements.preventSelf.checked = false;
   }
 }
 
@@ -150,6 +239,18 @@ elements.networkMediaRecovery.addEventListener('change', async () => {
     elements.networkMediaRecovery.checked = !requested;
   } finally {
     elements.networkMediaRecovery.disabled = false;
+  }
+});
+elements.preventSelf.addEventListener('change', async () => {
+  const requested = elements.preventSelf.checked;
+  elements.preventSelf.disabled = true;
+  try {
+    const settings = await api.updateSettings({ preventSelf: requested });
+    elements.preventSelf.checked = settings.preventSelf === true;
+  } catch {
+    elements.preventSelf.checked = !requested;
+  } finally {
+    elements.preventSelf.disabled = false;
   }
 });
 api.onRecordsDeleted(() => load());

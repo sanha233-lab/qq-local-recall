@@ -121,6 +121,49 @@ test('ConversationStore displays a readable friend label instead of an internal 
   assert.equal(row.id, '3358089740');
 });
 
+test('ConversationStore deletes a single record and sweeps empty conversations', () => {
+  const store = new ConversationStore(tempDir());
+  store.save(record('m1', 'friend:u1'));
+  store.save(record('m2', 'friend:u1'));
+  store.save(record('m3', 'group:g1'));
+
+  assert.equal(store.deleteRecord('friend:u1', 'm1'), true);
+  assert.equal(store.get('m1'), undefined);
+  assert.equal(store.get('m2').msgId, 'm2');
+  assert.equal(store.listConversations().find(r => r.peerKey === 'friend:u1').count, 1);
+
+  assert.equal(store.deleteRecord('friend:u1', 'm2'), true);
+  assert.equal(store.conversations.has('friend:u1'), false);
+  assert.equal(store.listConversations().find(r => r.peerKey === 'friend:u1'), undefined);
+  assert.equal(store.get('m3').msgId, 'm3');
+});
+
+test('ConversationStore deleteRecord returns false for unknown peer or message', () => {
+  const store = new ConversationStore(tempDir());
+  store.save(record('m1', 'friend:u1'));
+
+  assert.equal(store.deleteRecord('friend:unknown', 'm1'), false);
+  assert.equal(store.deleteRecord('friend:u1', 'no-such-id'), false);
+});
+
+test('ConversationStore getRecordSummaries returns kind per element type', () => {
+  const store = new ConversationStore(tempDir());
+  const voice = record('v1', 'friend:u1');
+  voice.message.elements = [{ elementType: 4, pttElement: {} }];
+  const pic = record('p1', 'friend:u1');
+  pic.message.elements = [{ elementType: 2, picElement: {} }];
+  const txt = record('t1', 'friend:u1');
+  store.save(voice);
+  store.save(pic);
+  store.save(txt);
+
+  const summaries = store.getRecordSummaries('friend:u1');
+  assert.equal(summaries.find(s => s.msgId === 'v1').kind, 'voice');
+  assert.equal(summaries.find(s => s.msgId === 'p1').kind, 'picture');
+  assert.equal(summaries.find(s => s.msgId === 't1').kind, 'text');
+});
+
+
 test('ConversationStore copies records when changing to a new local root', () => {
   const store = new ConversationStore(tempDir());
   const selected = path.join(tempDir(), 'new-records');

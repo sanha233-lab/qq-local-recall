@@ -78,7 +78,7 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
   let storagePath = path.resolve(dataDir);
   const diagPath = path.join(dataDir, 'ptt-debug.jsonl');
   const diagLog = entry => fs.appendFileSync(diagPath, JSON.stringify({ t: Date.now(), ...entry }) + '\n');
-  const processor = new RecallProcessor({ store, mediaStore, pttStore, cacheLimit: 10000, preventSelf: false, diagLog });
+  const processor = new RecallProcessor({ store, mediaStore, pttStore, cacheLimit: 10000, preventSelf: settings.preventSelf, diagLog });
   const patchedContents = new WeakSet();
   let managerWindow = null;
   let started = false;
@@ -124,6 +124,10 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
     if (started) return;
     started = true;
     ipcMain.handle(CHANNELS.list, () => store.listConversations());
+    ipcMain.handle(CHANNELS.listRecords, (_event, peerKey) => {
+      if (typeof peerKey !== 'string' || peerKey.length > 512) throw new TypeError('peerKey is invalid');
+      return store.getRecordSummaries(peerKey);
+    });
     ipcMain.handle(CHANNELS.delete, (_event, value) => {
       const peerKeys = validatePeerKeys(value);
       const result = store.deleteConversations(peerKeys);
@@ -135,6 +139,16 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
         messageIds: result.deletedMessageIds,
       });
       return result;
+    });
+    ipcMain.handle(CHANNELS.deleteRecord, (_event, peerKey, msgId) => {
+      if (typeof peerKey !== 'string' || peerKey.length > 512) throw new TypeError('peerKey is invalid');
+      if (typeof msgId !== 'string' || msgId.length > 256) throw new TypeError('msgId is invalid');
+      const deleted = store.deleteRecord(peerKey, msgId);
+      if (deleted) {
+        mediaStore.sweep(store.mediaReferences());
+        pttStore.sweep(store.mediaReferences());
+      }
+      return { deleted };
     });
     ipcMain.handle(CHANNELS.open, () => openManager());
     ipcMain.handle(CHANNELS.persistMedia, async (event, value) => {
@@ -183,10 +197,14 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
     });
     ipcMain.handle(CHANNELS.settings, () => ({ ...settings }));
     ipcMain.handle(CHANNELS.updateSettings, (_event, value) => {
-      if (!value || Object.keys(value).join(',') !== 'networkMediaRecovery') {
-        throw new TypeError('settings update is invalid');
-      }
-      settings = writeSettings(configDir, value);
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('settings update is invalid');
+      const allowed = new Set(['networkMediaRecovery', 'preventSelf']);
+      const keys = Object.keys(value);
+      if (keys.length === 0 || keys.some(k => !allowed.has(k))) throw new TypeError('settings update is invalid');
+      if ('networkMediaRecovery' in value && typeof value.networkMediaRecovery !== 'boolean') throw new TypeError('settings update is invalid');
+      if ('preventSelf' in value && typeof value.preventSelf !== 'boolean') throw new TypeError('settings update is invalid');
+      settings = writeSettings(configDir, { ...settings, ...value });
+      processor.preventSelf = settings.preventSelf;
       return { ...settings };
     });
     ipcMain.handle(CHANNELS.storagePath, () => storagePath);

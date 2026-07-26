@@ -247,7 +247,7 @@ test('disabled or unavailable QQ session recovery performs no network request', 
   await assert.rejects(handler({ sender: { session: {} } }, input), /unavailable/);
   assert.equal(calls, 0);
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(configDir, 'settings.json'), 'utf8')), {
-    version: 1, networkMediaRecovery: true,
+    version: 1, networkMediaRecovery: true, preventSelf: false,
   });
 });
 

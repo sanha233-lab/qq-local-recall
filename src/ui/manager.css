@@ -51,6 +51,20 @@ th:last-child, td:last-child { width: 148px; }
 .peer strong, .peer span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .peer span { color: var(--muted); font-size: 11px; }
 .type { color: var(--muted); }
+.peer-name-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.peer-name-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.expand-btn { flex: none; height: 22px; padding: 0 8px; border: 1px solid var(--border); border-radius: 4px; background: transparent; color: var(--muted); font: 600 11px/1 inherit; cursor: pointer; }
+.expand-btn:not(:disabled):hover { border-color: var(--accent); color: var(--accent); }
+.record-row td { height: auto; padding: 0; background: rgb(23 105 224 / 3%); border-bottom: 1px solid var(--border); }
+.record-item { display: flex; align-items: center; gap: 10px; padding: 6px 12px 6px 52px; }
+.record-time { flex: none; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; min-width: 120px; }
+.record-kind { flex: none; padding: 2px 7px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+.kind-voice { background: #e8f3ff; color: #1769e0; }
+.kind-picture { background: #e8f8f0; color: #1a7a4a; }
+.kind-text { background: #f3f3f3; color: #555; }
+.record-delete { flex: none; margin-left: auto; height: 26px; padding: 0 10px; border: 1px solid var(--border); border-radius: 5px; background: transparent; color: var(--danger); font: 600 12px/1 inherit; cursor: pointer; }
+.record-delete:not(:disabled):hover { background: var(--danger); color: white; }
+.record-delete:disabled { opacity: .45; cursor: default; }
 
 @media (prefers-color-scheme: dark) {
   :root { background: #16191f; color: #edf1f7; --surface: #20242c; --border: #343a45; --muted: #a1a9b7; --accent: #64a2ff; }

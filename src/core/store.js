@@ -181,6 +181,38 @@ class ConversationStore {
     }).sort((left, right) => right.sizeBytes - left.sizeBytes || left.name.localeCompare(right.name, 'zh-CN'));
   }
 
+  getRecordSummaries(peerKey) {
+    const entry = this.conversations.get(String(peerKey));
+    if (!entry) return [];
+    return entry.records.map(record => {
+      const elements = record?.message?.elements || [];
+      let kind = 'text';
+      for (const el of elements) {
+        if (el?.pttElement) { kind = 'voice'; break; }
+        if (el?.picElement || el?.marketFaceElement) { kind = 'picture'; break; }
+      }
+      return { msgId: String(record.msgId), recallTime: record.recallTime ? String(record.recallTime) : '', kind };
+    });
+  }
+
+  deleteRecord(peerKey, msgId) {
+    const key = String(peerKey);
+    const id = String(msgId);
+    const entry = this.conversations.get(key);
+    if (!entry) return false;
+    const index = entry.records.findIndex(r => String(r?.msgId) === id);
+    if (index < 0) return false;
+    entry.records.splice(index, 1);
+    this.byMessageId.delete(id);
+    if (entry.records.length === 0) {
+      fs.rmSync(entry.filePath, { force: true });
+      this.conversations.delete(key);
+    } else {
+      this.writeEntry(entry);
+    }
+    return true;
+  }
+
   deleteConversations(peerKeys) {
     const deletedPeerKeys = [];
     const deletedMessageIds = [];

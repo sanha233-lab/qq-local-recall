@@ -13,7 +13,7 @@
       <div>
         <p class="eyebrow">本地存储</p>
         <h1>撤回记录管理</h1>
-        <p class="subtitle">记录只保存在本机。选择好友或群聊后，可整组删除。</p>
+        <p class="subtitle">记录只保存在本机。选择好友或群聊后，可整组删除，也可展开逐条删除。</p>
       </div>
       <div class="summary" aria-live="polite">
         <strong id="total-size">0 B</strong>
@@ -43,6 +43,14 @@
         <span>本地副本不可用时尝试从 QQ 媒体服务恢复</span>
       </div>
       <input id="network-media-recovery" type="checkbox" aria-label="缺失媒体自动回源">
+    </section>
+
+    <section class="recovery-setting" aria-label="防撤回设置">
+      <div>
+        <strong>拦截自己撤回的消息</strong>
+        <span>开启后，自己撤回的消息也会被保留</span>
+      </div>
+      <input id="prevent-self" type="checkbox" aria-label="拦截自己撤回的消息">
     </section>
 
     <p id="status" class="status" role="status">正在读取本地记录</p>

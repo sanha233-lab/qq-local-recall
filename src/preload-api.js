@@ -2,7 +2,9 @@
 
 const CHANNELS = Object.freeze({
   list: 'qq-local-recall:list-conversations',
+  listRecords: 'qq-local-recall:list-records',
   delete: 'qq-local-recall:delete-conversations',
+  deleteRecord: 'qq-local-recall:delete-record',
   deleted: 'qq-local-recall:records-deleted',
   open: 'qq-local-recall:open-manager',
   recovered: 'qq-local-recall:recovered',
@@ -19,7 +21,9 @@ function createPreloadApi(
 ) {
   const api = {
     listConversations: () => ipcRenderer.invoke(CHANNELS.list),
+    listRecords: peerKey => ipcRenderer.invoke(CHANNELS.listRecords, peerKey),
     deleteConversations: peerKeys => ipcRenderer.invoke(CHANNELS.delete, peerKeys),
+    deleteRecord: (peerKey, msgId) => ipcRenderer.invoke(CHANNELS.deleteRecord, peerKey, msgId),
     onRecordsDeleted: callback => {
       ipcRenderer.on(CHANNELS.deleted, (_event, payload) => callback(payload));
     },
