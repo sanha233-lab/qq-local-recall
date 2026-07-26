@@ -1,4 +1,25 @@
-'use strict';
+﻿'use strict';
+
+const fs = require('node:fs');
+
+const AMR_FRAME_SIZES = [12, 13, 15, 17, 19, 20, 26, 31, 5, 0, 0, 0, 0, 0, 0, 0];
+
+function readAmrDuration(filePath) {
+  try {
+    const buf = fs.readFileSync(filePath);
+    if (buf.length < 6 || buf[0] !== 0x23 || buf[1] !== 0x21) return 0;
+    let offset = 6;
+    let frames = 0;
+    while (offset < buf.length) {
+      const ft = (buf[offset] >> 3) & 0xF;
+      const size = AMR_FRAME_SIZES[ft];
+      if (size === 0) break;
+      offset += 1 + size;
+      frames++;
+    }
+    return Math.max(1, Math.ceil(frames * 0.02));
+  } catch { return 0; }
+}
 
 const {
   CandidateCache,
@@ -10,7 +31,7 @@ const {
 } = require('./recall');
 
 class RecallProcessor {
-  constructor({ store, mediaStore = null, pttStore = null, cacheLimit = 10000, preventSelf = false }) {
+  constructor({ store, mediaStore = null, pttStore = null, cacheLimit = 10000, preventSelf = false, diagLog = null }) {
     if (!store) throw new TypeError('store is required');
     this.store = store;
     this.mediaStore = mediaStore;
@@ -19,10 +40,21 @@ class RecallProcessor {
     this.pendingMediaLimit = cacheLimit;
     this.cache = new CandidateCache(cacheLimit, messageId => this.pendingMedia.delete(messageId));
     this.preventSelf = preventSelf;
-    // Secondary index: "chatType:peerUid:senderUid" -> msgId (most recent voice from sender)
     this.pttLastMsgId = new Map();
-    // Downloaded PTT files: msgId -> { relativePath, sha256, sizeBytes, ext }
     this.pttDownloads = new Map();
+    this._diagLog = diagLog;
+  }
+
+  _log(entry) {
+    if (this._diagLog) try { this._diagLog(entry); } catch {}
+  }
+
+  _safeStr(obj, max = 2000) {
+    if (obj == null) return null;
+    try {
+      const s = JSON.stringify(obj, (k, v) => ArrayBuffer.isView(v) ? `<Buf:${v.byteLength}>` : v);
+      return s.length > max ? s.slice(0, max) + '…' : s;
+    } catch { return '<err>'; }
   }
 
   processEvent(event) {
@@ -52,7 +84,10 @@ class RecallProcessor {
       messages[index] = recovered;
       const recoveredId = String(recovered.msgId);
       result.recoveredIds.push(recoveredId);
-      result.messageKinds[recoveredId] = recovered.elements.some(element => element?.pttElement)
+      result.messageKinds[recoveredId] = recovered.elements.some(el => {
+          const et = Number(el?.elementType);
+          return et === 3 || et === 4;
+        })
         ? 'voice'
         : recovered.elements.some(element => element?.picElement)
           ? 'picture'
@@ -80,7 +115,10 @@ class RecallProcessor {
       container.msgList[index] = recovered;
       const recoveredId = String(recovered.msgId);
       result.recoveredIds.push(recoveredId);
-      result.messageKinds[recoveredId] = recovered.elements.some(element => element?.pttElement)
+      result.messageKinds[recoveredId] = recovered.elements.some(el => {
+          const et = Number(el?.elementType);
+          return et === 3 || et === 4;
+        })
         ? 'voice'
         : recovered.elements.some(element => element?.picElement)
           ? 'picture'
@@ -95,6 +133,34 @@ class RecallProcessor {
     const attemptedIds = [];
     const messageKinds = {};
     const recallNotices = {};
+
+    // Diagnostic: scan raw IPC args for voice/recall data before processing
+    if (this._diagLog) {
+      const scan = (val, depth) => {
+        if (!val || typeof val !== 'object' || depth > 8) return;
+        if (Array.isArray(val)) { for (const v of val) scan(v, depth + 1); return; }
+        if (Array.isArray(val.elements) && val.elements.length > 0) {
+          const types = val.elements.map(e => ({ et: e?.elementType, k: Object.keys(e || {}) }));
+          const isRecall = val.elements.some(e => e?.grayTipElement?.revokeElement !== undefined);
+          const hasPttLike = types.some(t => Number(t.et) === 3 || (t.k || []).some(k => /ptt|voice/i.test(k)));
+          if (isRecall) {
+            const grayEl = val.elements.find(e => e?.grayTipElement);
+            this._log({ ev: 'recallNotice', msgId: val.msgId, chatType: val.chatType,
+              revoke: this._safeStr(grayEl?.grayTipElement?.revokeElement), types });
+          }
+          if (hasPttLike) {
+            this._log({ ev: 'voiceLike', msgId: val.msgId, chatType: val.chatType,
+              peerUid: val.peerUid, senderUid: val.senderUid, types });
+          }
+        }
+        if (val.cmdName && /onRichMediaDownloadComplete/.test(String(val.cmdName))) {
+          this._log({ ev: 'richMediaCmd', notifyInfo: this._safeStr(val.payload?.notifyInfo) });
+        }
+        for (const v of Object.values(val)) scan(v, depth + 1);
+      };
+      for (const arg of args) scan(arg, 0);
+    }
+
     const visit = value => {
       if (!value || typeof value !== 'object') return;
       if (Array.isArray(value)) {
@@ -129,6 +195,7 @@ class RecallProcessor {
 
   // Called when QQ finishes downloading a rich-media file.
   processRichMediaDownload(notifyInfo) {
+    this._log({ ev: 'richMediaDL', raw: this._safeStr(notifyInfo) });
     if (!notifyInfo || !this.pttStore) return;
     const filePath = String(notifyInfo.filePath || '');
     const msgId = String(notifyInfo.msgId || '');
@@ -136,9 +203,11 @@ class RecallProcessor {
     const isPtt = /[\\/]Ptt[\\/]/i.test(filePath)
       || /\.(amr|silk|slk)$/i.test(filePath)
       || Number(notifyInfo.downloadType) === 2;
+    this._log({ ev: 'richMediaDL_isPtt', isPtt, filePath, msgId, downloadType: notifyInfo.downloadType });
     if (!isPtt) return;
     try {
       const ref = this.pttStore.saveFile(filePath);
+      ref.duration = readAmrDuration(filePath);
       this.pttDownloads.set(msgId, ref);
     } catch { /* file may not exist yet or already cleaned up */ }
   }
@@ -146,7 +215,15 @@ class RecallProcessor {
   // Update pttLastMsgId secondary index when a voice message is cached.
   indexPttMessage(message) {
     if (!message || !Array.isArray(message.elements)) return;
-    const hasPtt = message.elements.some(el => Number(el?.elementType) === 3 && el.pttElement);
+    const hasPtt = message.elements.some(el => {
+      const et = Number(el?.elementType);
+      return et === 3 || et === 4;
+    });
+    const hasPttKey = !hasPtt && message.elements.some(el => el && Object.keys(el).some(k => /ptt/i.test(k)));
+    if (hasPtt || hasPttKey) {
+      this._log({ ev: 'indexPtt', msgId: message.msgId, hasPtt, hasPttKey,
+        types: message.elements.map(e => ({ et: e?.elementType, k: Object.keys(e || {}) })) });
+    }
     if (!hasPtt) return;
     const chatType = Number(message.chatType);
     const peerUid = String(message.peerUid || '');
@@ -179,13 +256,17 @@ class RecallProcessor {
     const stored = this.store.get(messageId);
     const cached = this.cache.get(messageId);
 
-    // Voice recall fallback: revokeElement has no origMsgId, so messageId falls back to
-    // the recall notice's own msgId and the normal lookup fails. Use pttLastMsgId index.
+    this._log({ ev: 'restore', messageId, hasCached: !!cached, hasStored: !!stored,
+      origMsgId: info.origMsgId, origMsgSenderUid: info.origMsgSenderUid,
+      infoKeys: Object.keys(info) });
+
     if (!stored && !cached && info.origMsgSenderUid) {
       const chatType = Number(recallMessage.chatType);
       const peerUid = String(recallMessage.peerUid || '');
       const pttKey = `${chatType}:${peerUid}:${info.origMsgSenderUid}`;
       const voiceMsgId = this.pttLastMsgId.get(pttKey);
+      this._log({ ev: 'pttFallback', pttKey, voiceMsgId: voiceMsgId || null,
+        pttIndexSize: this.pttLastMsgId.size });
       if (voiceMsgId) {
         const voiceCached = this.cache.get(voiceMsgId);
         const voiceStored = this.store.get(voiceMsgId);
@@ -210,8 +291,14 @@ class RecallProcessor {
     const pttDownload = this.pttDownloads.get(messageId);
     if (pttDownload) {
       for (const element of (recovered.elements || [])) {
-        if (element.pttElement) {
-          element.pttElement.filePath = pttDownload.absolutePath || element.pttElement.filePath;
+        const et = Number(element?.elementType);
+        if (et === 3 || et === 4) {
+          if (!element.pttElement) element.pttElement = {};
+          element.pttElement.filePath = pttDownload.absolutePath;
+          element.pttElement.duration = element.pttElement.duration || pttDownload.duration || 1;
+          element.pttElement.fileSize = String(pttDownload.sizeBytes || 0);
+          element.pttElement.voiceChangeType = element.pttElement.voiceChangeType ?? 0;
+          element.pttElement.canConvert2Text = element.pttElement.canConvert2Text ?? false;
           element.qqLocalRecallMedia = {
             sha256: pttDownload.sha256,
             relativePath: pttDownload.relativePath,
@@ -238,7 +325,13 @@ class RecallProcessor {
       if (persistable) {
         if (pttDownload) {
           for (const element of (persistable.elements || [])) {
-            if (element.pttElement) {
+            const et = Number(element?.elementType);
+            if (et === 3 || et === 4) {
+              if (!element.pttElement) element.pttElement = {};
+              element.pttElement.duration = element.pttElement.duration || pttDownload.duration || 1;
+              element.pttElement.fileSize = String(pttDownload.sizeBytes || 0);
+              element.pttElement.voiceChangeType = element.pttElement.voiceChangeType ?? 0;
+              element.pttElement.canConvert2Text = element.pttElement.canConvert2Text ?? false;
               element.qqLocalRecallMedia = {
                 sha256: pttDownload.sha256,
                 relativePath: pttDownload.relativePath,
@@ -266,7 +359,9 @@ class RecallProcessor {
     prepared.elements = prepared.elements.flatMap(element => {
       const reference = element.qqLocalRecallMedia;
       if (!reference) return [element];
-      if (element.pttElement && this.pttStore) {
+      const et = Number(element?.elementType);
+      if ((et === 3 || et === 4) && this.pttStore) {
+        if (!element.pttElement) element.pttElement = {};
         try {
           const absolutePath = this.pttStore.resolve(reference.relativePath);
           element.pttElement.filePath = absolutePath;

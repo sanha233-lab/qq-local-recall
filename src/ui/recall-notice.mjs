@@ -1,4 +1,4 @@
-const noticeId = messageId => `qq-local-recall-notice-${String(messageId)}`;
+﻿const noticeId = messageId => `qq-local-recall-notice-${String(messageId)}`;
 
 export function findMessageRow(document, messageId) {
   const id = String(messageId);
@@ -19,7 +19,7 @@ export function findMessageContent(document, messageId) {
 }
 
 export function formatRecallNotice(detail = {}) {
-  const subject = detail.kind === 'picture' ? '图片' : '信息';
+  const subject = detail.kind === 'picture' ? '图片' : detail.kind === 'voice' ? '语音' : '消息';
   const operatorName = String(detail.operatorName || '对方').trim() || '对方';
   const senderName = String(detail.senderName || '').trim();
   const operatorUid = String(detail.operatorUid || '');

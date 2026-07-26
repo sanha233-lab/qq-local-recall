@@ -1,4 +1,4 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   formatRecallNotice,
@@ -12,10 +12,10 @@ import {
 test('formatRecallNotice distinguishes member, administrator and group owner operations', () => {
   assert.equal(formatRecallNotice({
     kind: 'message', operatorName: '小王', operatorRole: 0, senderName: '小王',
-  }), '小王 尝试撤回此信息');
+  }), '小王 尝试撤回此消息');
   assert.equal(formatRecallNotice({
     kind: 'message', operatorName: 'Q群管家', operatorRole: 1, senderName: 'JAY',
-  }), '管理员 Q群管家 尝试撤回 JAY 的信息');
+  }), '管理员 Q群管家 尝试撤回 JAY 的消息');
   assert.equal(formatRecallNotice({
     kind: 'picture', operatorName: 'see', operatorRole: 2, senderName: '月',
   }), '群主 see 尝试撤回 月 的图片');
@@ -26,7 +26,7 @@ test('formatRecallNotice distinguishes member, administrator and group owner ope
   assert.equal(formatRecallNotice({
     kind: 'message', operatorName: '成员名片', operatorRole: 0, senderName: '成员昵称',
     operatorUid: 'same-uid', senderUid: 'same-uid',
-  }), '成员名片 尝试撤回此信息');
+  }), '成员名片 尝试撤回此消息');
 });
 
 class FakeElement {
@@ -138,7 +138,7 @@ test('placeRecallNotice inserts one native notice immediately before its message
   assert.equal(notice.id, 'qq-local-recall-notice-123');
   assert.equal(notice.className, 'qq-local-recall-notice');
   assert.equal(notice.children[0].className, 'qq-local-recall-notice__pill');
-  assert.equal(notice.children[0].textContent, '对方尝试撤回此信息');
+  assert.equal(notice.children[0].textContent, '对方尝试撤回此消息');
   assert.equal(parent.children[1], row);
 
   assert.equal(placeRecallNotice(document, row, '123'), true);

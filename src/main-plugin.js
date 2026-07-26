@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('node:fs');
 const path = require('node:path');
 const {
   MAX_MEDIA_BYTES, MediaStore, PttStore, readPngDimensions, validateAspectRatio,
@@ -75,7 +76,9 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
   const configDir = path.resolve(storageConfigDir);
   let settings = readSettings(configDir);
   let storagePath = path.resolve(dataDir);
-  const processor = new RecallProcessor({ store, mediaStore, pttStore, cacheLimit: 10000, preventSelf: false });
+  const diagPath = path.join(dataDir, 'ptt-debug.jsonl');
+  const diagLog = entry => fs.appendFileSync(diagPath, JSON.stringify({ t: Date.now(), ...entry }) + '\n');
+  const processor = new RecallProcessor({ store, mediaStore, pttStore, cacheLimit: 10000, preventSelf: false, diagLog });
   const patchedContents = new WeakSet();
   let managerWindow = null;
   let started = false;

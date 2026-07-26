@@ -5,7 +5,8 @@ const fs = require('node:fs');
 const SUPPORTED_ELEMENT_KEYS = new Map([
   [1, 'textElement'],
   [2, 'picElement'],
-  [3, 'pttElement'],
+  [3, 'pttElement'],  // some QQ builds
+  [4, 'pttElement'],  // QQ 9.9.32+
   [6, 'faceElement'],
   [7, 'replyElement'],
   [11, 'marketFaceElement'],
@@ -67,7 +68,9 @@ function sanitizeMessage(message, { requireLocalMedia = true, allowMissingMedia 
 
   const elements = message.elements.flatMap(element => {
     const key = SUPPORTED_ELEMENT_KEYS.get(Number(element?.elementType));
-    if (!key || !element[key]) return [];
+    if (!key) return [];
+    // pttElement can arrive as null initially; still cache the element so recall can be prevented
+    if (key !== 'pttElement' && !element[key]) return [];
     const persistedMedia = element.qqLocalRecallMedia;
     if (requireLocalMedia && key === 'picElement' && !persistedMedia && !hasLocalPicture(element.picElement)
       && !allowMissingMedia) return [];
@@ -77,7 +80,7 @@ function sanitizeMessage(message, { requireLocalMedia = true, allowMissingMedia 
       && !allowMissingMedia) return [];
     const sanitized = { elementType: Number(element.elementType), [key]: clone(element[key]) };
     if (key === 'picElement') delete sanitized.picElement.originImageUrl;
-    if (key === 'pttElement') {
+    if (key === 'pttElement' && sanitized.pttElement) {
       delete sanitized.pttElement.fileUrl;
       delete sanitized.pttElement.bufKey;
       delete sanitized.pttElement.bufStr;
