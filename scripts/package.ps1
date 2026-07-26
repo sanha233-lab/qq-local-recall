@@ -23,6 +23,7 @@ New-Item -ItemType Directory -Path $SourceRoot -Force | Out-Null
 foreach ($item in @('manifest.json', 'package.json', 'LICENSE', 'NOTICE.md', 'README.md', 'CHANGELOG.md', 'src', 'test', 'scripts', 'docs')) {
     Copy-Item -LiteralPath (Join-Path $Root $item) -Destination $SourceRoot -Recurse
 }
+Remove-Item -LiteralPath (Join-Path $SourceRoot 'docs\superpowers') -Recurse -Force -ErrorAction SilentlyContinue
 $SourceZip = Join-Path $Delivery "QQ-Local-Recall-source-v$Version.zip"
 Remove-Item -LiteralPath $SourceZip -Force -ErrorAction SilentlyContinue
 Compress-Archive -LiteralPath $SourceRoot -DestinationPath $SourceZip -CompressionLevel Optimal
