@@ -16,6 +16,7 @@
 - 媒体请求只复用当前 QQ IPC 发送方的登录会话，不使用全局或 Node 请求；初始地址限定 HTTPS、443、`multimedia.nt.qq.com.cn`/`gchat.qpic.cn`、精确 `/download`、数字 `appid/spec`、非空 `rkey` 和匹配待处理元素的 `fileid`。
 - 最多跟随 2 次到 `.qq.com`、`.qpic.cn`、`.gtimg.cn` 的 HTTPS 重定向；单次 10 秒、响应 20 MiB，并按 GIF/PNG/JPEG/WebP magic bytes 验证。
 - 完整临时 URL、`fileid` 和 `rkey` 只存在于当前内存请求生命周期，不写入 JSON、媒体引用、日志或 IPC 返回值。
+- 诊断日志默认关闭：仅当记录目录存在 `ptt-debug.enabled` 标记文件时才写入本机 `ptt-debug.jsonl`（语音链路排查用），正式使用无需开启。
 - 数据文件名由 SHA-256 生成，删除 API 只接受 `friend:` 或 `group:` 开头的会话键；存储路径只能通过主进程原生文件夹选择器修改。
 - 损坏的数据文件不会自动删除，只记录诊断并跳过。
 

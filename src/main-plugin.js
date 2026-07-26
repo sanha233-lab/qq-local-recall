@@ -77,7 +77,9 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
   let settings = readSettings(configDir);
   let storagePath = path.resolve(dataDir);
   const diagPath = path.join(dataDir, 'ptt-debug.jsonl');
-  const diagLog = entry => fs.appendFileSync(diagPath, JSON.stringify({ t: Date.now(), ...entry }) + '\n');
+  const diagLog = fs.existsSync(path.join(dataDir, 'ptt-debug.enabled'))
+    ? entry => fs.appendFileSync(diagPath, JSON.stringify({ t: Date.now(), ...entry }) + '\n')
+    : null;
   const processor = new RecallProcessor({ store, mediaStore, pttStore, cacheLimit: 10000, preventSelf: settings.preventSelf, diagLog });
   const patchedContents = new WeakSet();
   let managerWindow = null;
@@ -141,12 +143,15 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
       return result;
     });
     ipcMain.handle(CHANNELS.deleteRecord, (_event, peerKey, msgId) => {
-      if (typeof peerKey !== 'string' || peerKey.length > 512) throw new TypeError('peerKey is invalid');
+      if (typeof peerKey !== 'string' || peerKey.length > 512 || !/^(friend|group):/.test(peerKey)) {
+        throw new TypeError('peerKey is invalid');
+      }
       if (typeof msgId !== 'string' || msgId.length > 256) throw new TypeError('msgId is invalid');
       const deleted = store.deleteRecord(peerKey, msgId);
       if (deleted) {
         mediaStore.sweep(store.mediaReferences());
         pttStore.sweep(store.mediaReferences());
+        broadcast(CHANNELS.deleted, { peerKeys: [peerKey], messageIds: [msgId] });
       }
       return { deleted };
     });

@@ -1,6 +1,6 @@
 {
   "name": "qq-local-recall",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "private": true,
   "description": "QQ 电脑端本地防撤回 LiteLoaderQQNT 插件",
   "license": "MIT",

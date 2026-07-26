@@ -4,8 +4,20 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { RecallProcessor } = require('../src/core/processor');
+const { RecallProcessor, readAmrDuration } = require('../src/core/processor');
 const { ConversationStore } = require('../src/core/store');
+
+const AMR_PAYLOAD_SIZES = [12, 13, 15, 17, 19, 20, 26, 31, 5, 0, 0, 0, 0, 0, 0, 0];
+
+function writeAmrFile(dir, name, frameTypes) {
+  const parts = [Buffer.from('#!AMR\n', 'latin1')];
+  for (const ft of frameTypes) {
+    parts.push(Buffer.from([(ft << 3) | 0x04]), Buffer.alloc(AMR_PAYLOAD_SIZES[ft]));
+  }
+  const filePath = path.join(dir, name);
+  fs.writeFileSync(filePath, Buffer.concat(parts));
+  return filePath;
+}
 
 function makeStore() {
   return new ConversationStore(fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-processor-')));
@@ -41,6 +53,65 @@ function mediaReference(char = 'a', extension = 'gif', staticFallback = false) {
     staticFallback,
   };
 }
+
+test('readAmrDuration counts speech and DTX NO_DATA frames', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-amr-'));
+  assert.equal(readAmrDuration(writeAmrFile(dir, 'a.amr', Array(50).fill(0))), 1);
+  const withSilence = [...Array(25).fill(0), ...Array(50).fill(15), ...Array(25).fill(0)];
+  assert.equal(readAmrDuration(writeAmrFile(dir, 'b.amr', withSilence)), 2);
+  assert.equal(readAmrDuration(writeAmrFile(dir, 'c.amr', [0])), 1);
+  assert.equal(readAmrDuration(writeAmrFile(dir, 'header-only.amr', [])), 0);
+});
+
+test('readAmrDuration rejects AMR-WB, non-AMR bytes and missing files', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-amr-'));
+  const wb = path.join(dir, 'wb.amr');
+  fs.writeFileSync(wb, Buffer.from(`#!AMR-WB\n${'\x3C'.repeat(30)}`, 'latin1'));
+  assert.equal(readAmrDuration(wb), 0);
+  const junk = path.join(dir, 'junk.amr');
+  fs.writeFileSync(junk, Buffer.from('GIF89a not audio', 'latin1'));
+  assert.equal(readAmrDuration(junk), 0);
+  assert.equal(readAmrDuration(path.join(dir, 'missing.amr')), 0);
+});
+
+test('recall of an unknown message does not fall back to a voice with a different msgTime', () => {
+  const store = makeStore();
+  const processor = new RecallProcessor({ store });
+  processor.processEvent({ cmdName: 'onRecvMsg', payload: { msgList: [textMessage({
+    msgId: 'v1', msgTime: '1000',
+    elements: [{ elementType: 4, pttElement: { md5HexStr: 'x' } }],
+  })] } });
+
+  const result = processor.processEvent({ cmdName: 'onMsgInfoListUpdate', payload: { msgList: [recallMessage({
+    msgId: 'x9', msgTime: '9000', recallTime: '9100',
+    elements: [{ elementType: 8, grayTipElement: { subElementType: 1, revokeElement: {
+      isSelfOperate: false, operatorNick: '好友', origMsgId: 'x9', origMsgSenderUid: 'u1',
+    } } }],
+  })] } });
+
+  assert.deepEqual(result.recoveredIds, []);
+  assert.equal(store.get('x9'), undefined);
+  assert.equal(store.get('v1'), undefined);
+});
+
+test('voice fallback still recovers when the recall carries the original msgTime', () => {
+  const store = makeStore();
+  const processor = new RecallProcessor({ store });
+  processor.processEvent({ cmdName: 'onRecvMsg', payload: { msgList: [textMessage({
+    msgId: 'v1', msgTime: '1000',
+    elements: [{ elementType: 4, pttElement: { md5HexStr: 'x' } }],
+  })] } });
+
+  const result = processor.processEvent({ cmdName: 'onMsgInfoListUpdate', payload: { msgList: [recallMessage({
+    msgId: 'x9', msgTime: '1000', recallTime: '1100',
+    elements: [{ elementType: 8, grayTipElement: { subElementType: 1, revokeElement: {
+      isSelfOperate: false, operatorNick: '好友', origMsgId: 'x9', origMsgSenderUid: 'u1',
+    } } }],
+  })] } });
+
+  assert.deepEqual(result.recoveredIds, ['v1']);
+  assert.equal(result.messageKinds.v1, 'voice');
+});
 
 test('RecallProcessor caches received messages then replaces a recall update', () => {
   const store = makeStore();

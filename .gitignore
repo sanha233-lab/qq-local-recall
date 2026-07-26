@@ -1,17 +1,12 @@
-# Local installation backups and temporary staging
-delivery/backup/
-delivery/.staging/
+# Release artifacts and third-party loader binaries stay out of git; distribute via GitHub Releases
+delivery/
+vendor/
 
 # Internal work logs may contain local machine paths or private chat details
 progress.md
 task_plan.md
 findings.md
 docs/superpowers/
-
-# Superseded friend bundle held by another process; use the AutoDetect archive
-delivery/QQ-Local-Recall-1.2.3-For-Friend.zip
-delivery/QQ-Local-Recall-1.2.3-For-Friend.sha256
-delivery/QQ-Local-Recall-1.2.3-*
 
 # Temporary diagnostics and editor/runtime artifacts
 *.tmp

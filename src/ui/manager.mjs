@@ -6,6 +6,7 @@ const elements = {
   search: document.getElementById('search'),
   delete: document.getElementById('delete'),
   status: document.getElementById('status'),
+  actionError: document.getElementById('action-error'),
   table: document.querySelector('.table-wrap'),
   body: document.getElementById('rows'),
   selectAll: document.getElementById('select-all'),
@@ -21,6 +22,11 @@ const KIND_LABEL = { voice: '语音', picture: '图片', text: '文字' };
 
 function visibleRows() {
   return filterRows(state.rows, state.query);
+}
+
+function showActionError(message) {
+  elements.actionError.textContent = message;
+  elements.actionError.hidden = !message;
 }
 
 function updateActions(rows) {
@@ -53,24 +59,17 @@ function buildDetailRows(peerKey, records) {
     delBtn.textContent = '删除';
     delBtn.setAttribute('aria-label', `删除此条${KIND_LABEL[rec.kind] || ''}记录`);
     delBtn.addEventListener('click', async () => {
+      const confirmed = window.confirm(`确定删除这条${KIND_LABEL[rec.kind] || ''}记录吗？此操作不可恢复。`);
+      if (!confirmed) return;
       delBtn.disabled = true;
-      await api.deleteRecord(peerKey, rec.msgId);
-      const cached = state.recordCache.get(peerKey);
-      if (cached) {
-        const idx = cached.findIndex(r => r.msgId === rec.msgId);
-        if (idx >= 0) cached.splice(idx, 1);
+      try {
+        await api.deleteRecord(peerKey, rec.msgId);
+        showActionError('');
+        await load();
+      } catch (error) {
+        delBtn.disabled = false;
+        showActionError(`删除失败：${error?.message || String(error)}`);
       }
-      const rowIdx = state.rows.findIndex(r => r.peerKey === peerKey);
-      if (rowIdx >= 0) {
-        state.rows[rowIdx] = { ...state.rows[rowIdx], count: state.rows[rowIdx].count - 1 };
-        if (state.rows[rowIdx].count <= 0) {
-          state.rows.splice(rowIdx, 1);
-          state.expanded.delete(peerKey);
-          state.recordCache.delete(peerKey);
-          state.selected.delete(peerKey);
-        }
-      }
-      render();
     });
 
     item.append(timeSpan, kindSpan, delBtn);
@@ -212,8 +211,14 @@ elements.delete.addEventListener('click', async () => {
   const confirmed = window.confirm(`确定删除 ${selectedRows.length} 个会话的本地撤回记录（${formatBytes(bytes)}）吗？此操作不可恢复。`);
   if (!confirmed) return;
   elements.delete.disabled = true;
-  await api.deleteConversations([...state.selected]);
-  await load();
+  try {
+    await api.deleteConversations([...state.selected]);
+    showActionError('');
+    await load();
+  } catch (error) {
+    showActionError(`删除失败：${error?.message || String(error)}`);
+    updateActions(visibleRows());
+  }
 });
 elements.changeStorage.addEventListener('click', async () => {
   elements.changeStorage.disabled = true;
@@ -221,10 +226,12 @@ elements.changeStorage.addEventListener('click', async () => {
     const result = await api.chooseStoragePath();
     if (!result?.canceled) {
       elements.storagePath.textContent = result.path;
+      showActionError('');
       await load();
     }
   } catch (error) {
-    elements.storagePath.textContent = `修改失败：${error?.message || String(error)}`;
+    showActionError(`修改存储位置失败：${error?.message || String(error)}`);
+    await loadStoragePath();
   } finally {
     elements.changeStorage.disabled = false;
   }
@@ -235,8 +242,10 @@ elements.networkMediaRecovery.addEventListener('change', async () => {
   try {
     const settings = await api.updateSettings({ networkMediaRecovery: requested });
     elements.networkMediaRecovery.checked = settings.networkMediaRecovery === true;
-  } catch {
+    showActionError('');
+  } catch (error) {
     elements.networkMediaRecovery.checked = !requested;
+    showActionError(`设置保存失败：${error?.message || String(error)}`);
   } finally {
     elements.networkMediaRecovery.disabled = false;
   }
@@ -247,8 +256,10 @@ elements.preventSelf.addEventListener('change', async () => {
   try {
     const settings = await api.updateSettings({ preventSelf: requested });
     elements.preventSelf.checked = settings.preventSelf === true;
-  } catch {
+    showActionError('');
+  } catch (error) {
     elements.preventSelf.checked = !requested;
+    showActionError(`设置保存失败：${error?.message || String(error)}`);
   } finally {
     elements.preventSelf.disabled = false;
   }

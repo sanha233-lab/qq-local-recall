@@ -1,63 +1,44 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
 
-const { createPreloadApi } = require('../src/preload-api');
+function exposedKeys(relativePath) {
+  const source = fs.readFileSync(path.join(__dirname, '..', ...relativePath.split('/')), 'utf8');
+  let exposed;
+  vm.runInNewContext(source, {
+    require(id) {
+      if (id !== 'electron') throw new Error(`unexpected preload dependency: ${id}`);
+      return {
+        contextBridge: { exposeInMainWorld(_key, value) { exposed = value; } },
+        ipcRenderer: { invoke() {}, on() {} },
+      };
+    },
+  }, { filename: relativePath });
+  return new Set(Object.keys(exposed));
+}
 
-test('preload API exposes only fixed local recall operations', async () => {
-  const calls = [];
-  const listeners = new Map();
-  const ipcRenderer = {
-    invoke(channel, value) { calls.push([channel, value]); return Promise.resolve({ ok: true }); },
-    on(channel, callback) { listeners.set(channel, callback); },
-  };
-  const api = createPreloadApi(ipcRenderer);
+function calledMethods(relativePath, accessorPattern) {
+  const source = fs.readFileSync(path.join(__dirname, '..', ...relativePath.split('/')), 'utf8');
+  const names = new Set();
+  for (const match of source.matchAll(accessorPattern)) names.add(match[1]);
+  return names;
+}
 
-  await api.listConversations();
-  await api.deleteConversations(['friend:u1']);
-  let deleted;
-  api.onRecordsDeleted(value => { deleted = value; });
-  listeners.get('qq-local-recall:records-deleted')({}, { peerKeys: ['friend:u1'] });
-
-  assert.deepEqual(Object.keys(api).sort(), ['deleteConversations', 'deleteRecord', 'listConversations', 'listRecords', 'onRecordsDeleted']);
-  assert.deepEqual(calls, [
-    ['qq-local-recall:list-conversations', undefined],
-    ['qq-local-recall:delete-conversations', ['friend:u1']],
-  ]);
-  assert.deepEqual(deleted, { peerKeys: ['friend:u1'] });
+// 1.4.2 shipped with manager.mjs calling listRecords/deleteRecord that the manager
+// preload never exposed. These tests pin every renderer-side call to the real
+// preload surface so the two hand-written preloads cannot drift again.
+test('manager page only calls methods the manager preload actually exposes', () => {
+  const keys = exposedKeys('src/ui/manager-preload.js');
+  const called = calledMethods('src/ui/manager.mjs', /\bapi\.([A-Za-z0-9_]+)\s*\(/g);
+  assert.ok(called.size >= 5, 'expected manager.mjs to call several api methods');
+  for (const name of called) assert.ok(keys.has(name), `manager preload missing method: ${name}`);
 });
 
-test('renderer preload API exposes the fixed rendered-media operation', async () => {
-  const calls = [];
-  const ipcRenderer = {
-    invoke(channel, value) { calls.push([channel, value]); return Promise.resolve({ ok: true }); },
-    on() {},
-  };
-  const api = createPreloadApi(ipcRenderer, { includeRecovered: true });
-  const value = { messageId: 'm1', mediaIndex: 0, sourceUrl: 'appimg://D/a' };
-
-  await api.persistRenderedMedia(value);
-
-  assert.equal(typeof api.onRecovered, 'function');
-  assert.deepEqual(calls, [['qq-local-recall:persist-rendered-media', value]]);
-  assert.equal('readFile' in api, false);
-  assert.equal('writeFile' in api, false);
-});
-
-test('manager preload API exposes only fixed settings operations', async () => {
-  const calls = [];
-  const ipcRenderer = {
-    invoke(channel, value) { calls.push([channel, value]); return Promise.resolve({ networkMediaRecovery: true }); },
-    on() {},
-  };
-  const api = createPreloadApi(ipcRenderer, { includeSettings: true });
-
-  await api.getSettings();
-  await api.updateSettings({ networkMediaRecovery: false });
-
-  assert.equal(typeof api.getSettings, 'function');
-  assert.equal(typeof api.updateSettings, 'function');
-  assert.deepEqual(calls, [
-    ['qq-local-recall:get-settings', undefined],
-    ['qq-local-recall:update-settings', { networkMediaRecovery: false }],
-  ]);
+test('chat renderer only calls methods the chat preload actually exposes', () => {
+  const keys = exposedKeys('src/preload.js');
+  const called = calledMethods('src/renderer.mjs', /window\.qqLocalRecall\??\.([A-Za-z0-9_]+)(?:\?\.)?\s*\(/g);
+  assert.ok(called.size >= 2, 'expected renderer.mjs to call several qqLocalRecall methods');
+  for (const name of called) assert.ok(keys.has(name), `chat preload missing method: ${name}`);
 });

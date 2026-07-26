@@ -8,6 +8,7 @@ const path = require('node:path');
 const {
   MAX_MEDIA_BYTES,
   MediaStore,
+  PttStore,
   parseAppImagePath,
   sniffImage,
 } = require('../src/core/media-store');
@@ -132,6 +133,51 @@ test('copyReferencedTo copies only valid referenced media and sweep deletes only
   assert.equal(fs.existsSync(path.join(nextRoot, orphan.relativePath)), false);
 
   assert.deepEqual(store.sweep([keep]), [orphan.relativePath]);
+  assert.equal(fs.existsSync(keep.absolutePath), true);
+  assert.equal(fs.existsSync(orphan.absolutePath), false);
+});
+
+test('PttStore saveFile enforces audio magic, the 20 MiB cap and SHA-256 dedup', () => {
+  const store = new PttStore(makeRoot('qq-local-recall-ptt-'));
+  const dir = makeRoot('qq-local-recall-ptt-src-');
+  const amr = path.join(dir, 'voice.amr');
+  fs.writeFileSync(amr, Buffer.from('#!AMR\n payload', 'latin1'));
+
+  const first = store.saveFile(amr);
+  const second = store.saveFile(amr);
+  assert.equal(first.relativePath, `ptt/${first.sha256}.amr`);
+  assert.deepEqual(second, first);
+  assert.deepEqual(fs.readdirSync(store.pttDir), [`${first.sha256}.amr`]);
+
+  const silk = path.join(dir, 'voice.silk');
+  fs.writeFileSync(silk, Buffer.from('\x02#!SILK_V3 data', 'latin1'));
+  assert.equal(store.saveFile(silk).ext, 'silk');
+
+  const junk = path.join(dir, 'junk.amr');
+  fs.writeFileSync(junk, Buffer.from('MP4 not audio', 'latin1'));
+  assert.throws(() => store.saveFile(junk), /PTT/);
+
+  const oversized = path.join(dir, 'big.amr');
+  fs.writeFileSync(oversized, Buffer.concat([Buffer.from('#!AMR\n'), Buffer.alloc(MAX_MEDIA_BYTES)]));
+  assert.throws(() => store.saveFile(oversized), /20 MiB/);
+});
+
+test('PttStore sweep deletes only orphan voice files and ignores image references', () => {
+  const store = new PttStore(makeRoot('qq-local-recall-ptt-'));
+  const dir = makeRoot('qq-local-recall-ptt-src-');
+  const keepSrc = path.join(dir, 'keep.amr');
+  const orphanSrc = path.join(dir, 'orphan.amr');
+  fs.writeFileSync(keepSrc, Buffer.from('#!AMR\n keep', 'latin1'));
+  fs.writeFileSync(orphanSrc, Buffer.from('#!AMR\n orphan', 'latin1'));
+  const keep = store.saveFile(keepSrc);
+  const orphan = store.saveFile(orphanSrc);
+
+  const removed = store.sweep([
+    { relativePath: keep.relativePath },
+    { relativePath: `media/${'a'.repeat(64)}.png` },
+  ]);
+
+  assert.deepEqual(removed, [orphan.relativePath]);
   assert.equal(fs.existsSync(keep.absolutePath), true);
   assert.equal(fs.existsSync(orphan.absolutePath), false);
 });

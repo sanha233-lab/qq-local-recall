@@ -2,22 +2,23 @@
 
 const fs = require('node:fs');
 
+// AMR-NB payload sizes per frame type: FT0-7 speech, FT8 SID;
+// FT9-14 reserved and FT15 NO_DATA (DTX silence) carry only the 1-byte TOC.
 const AMR_FRAME_SIZES = [12, 13, 15, 17, 19, 20, 26, 31, 5, 0, 0, 0, 0, 0, 0, 0];
 
 function readAmrDuration(filePath) {
   try {
     const buf = fs.readFileSync(filePath);
-    if (buf.length < 6 || buf[0] !== 0x23 || buf[1] !== 0x21) return 0;
+    // Exact "#!AMR\n" magic; "#!AMR-WB\n" uses different frame sizes and is rejected.
+    if (buf.length < 6 || buf.subarray(0, 6).toString('latin1') !== '#!AMR\n') return 0;
     let offset = 6;
     let frames = 0;
     while (offset < buf.length) {
       const ft = (buf[offset] >> 3) & 0xF;
-      const size = AMR_FRAME_SIZES[ft];
-      if (size === 0) break;
-      offset += 1 + size;
+      offset += 1 + AMR_FRAME_SIZES[ft];
       frames++;
     }
-    return Math.max(1, Math.ceil(frames * 0.02));
+    return frames ? Math.ceil(frames * 0.02) : 0;
   } catch { return 0; }
 }
 
@@ -209,6 +210,9 @@ class RecallProcessor {
       const ref = this.pttStore.saveFile(filePath);
       ref.duration = readAmrDuration(filePath);
       this.pttDownloads.set(msgId, ref);
+      while (this.pttDownloads.size > this.pendingMediaLimit) {
+        this.pttDownloads.delete(this.pttDownloads.keys().next().value);
+      }
     } catch { /* file may not exist yet or already cleaned up */ }
   }
 
@@ -270,7 +274,14 @@ class RecallProcessor {
       if (voiceMsgId) {
         const voiceCached = this.cache.get(voiceMsgId);
         const voiceStored = this.store.get(voiceMsgId);
-        if (voiceCached || voiceStored) {
+        // The recall gray tip is built on the original message skeleton, so its
+        // msgTime must match the voice candidate; otherwise the recall belongs to a
+        // different (unsupported) message and restoring the voice would persist a
+        // record whose content never matched the recalled message.
+        const candidate = voiceCached || voiceStored?.message;
+        const sameOrigin = candidate && String(candidate.msgTime || '') !== ''
+          && String(candidate.msgTime) === String(recallMessage.msgTime || '');
+        if ((voiceCached || voiceStored) && sameOrigin) {
           return this.restoreWithId(recallMessage, info, voiceMsgId, voiceCached, voiceStored);
         }
       }
@@ -452,4 +463,4 @@ class RecallProcessor {
   }
 }
 
-module.exports = { RecallProcessor };
+module.exports = { RecallProcessor, readAmrDuration };

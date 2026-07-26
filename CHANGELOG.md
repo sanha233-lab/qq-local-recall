@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.4.4] - 2026-07-26
+
+### Fixed
+
+- AMR 时长解析：DTX 静音帧（NO_DATA）不再截断计数，AMR-WB 与非 AMR 文件返回 0，语音时长不再显示错误值。
+- 语音兜底恢复增加 msgTime 一致性校验：撤回不支持类型的消息时，不再把该发送者最近一条未被撤回的语音误存为撤回记录（此路径待一次实机验收：发语音后撤回、发语音再发文件后撤回文件）。
+- 单条记录删除成功后向所有窗口广播 records-deleted，聊天窗口同步清理；管理页单条删除改为权威数据刷新，占用/时间列不再显示过期值。
+
+### Changed
+
+- 诊断日志 `ptt-debug.jsonl` 默认关闭，仅当记录目录存在 `ptt-debug.enabled` 标记文件时写入。
+- 语音存储增加 20 MiB 上限与 AMR/SILK 魔数校验（与图片防线对齐）；语音下载索引增加容量上限，避免长期运行内存增长。
+- 聊天窗口 preload 移除未使用的 `listConversations`/`deleteConversations` 暴露，收敛渲染进程攻击面。
+- 管理页操作失败现在有可见错误提示（设置开关、修改存储位置、批量/单条删除），单条删除增加确认对话框。
+- 单条删除 IPC 增加 `friend:`/`group:` 前缀校验，与 security-audit 文档口径一致。
+
+### Maintenance
+
+- `vendor/` 与 `delivery/` 不再入库，发布物统一由 GitHub Releases 承载；本地无交付物时 validate-package 跳过交付校验。
+- 删除未被生产代码使用的 `createPreloadApi` 工厂，新增"渲染层调用面必须落在 preload 暴露面内"的对账测试，防止两份手写 preload 再次漂移。
+
+### Verification
+
+- `npm test`: 136 tests passed.
+- `npm run check`: passed.
+
 ## [1.4.3] - 2026-07-26
 
 ### Fixed

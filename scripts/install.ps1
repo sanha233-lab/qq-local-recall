@@ -15,7 +15,10 @@ $BridgeHash = '4BB8CD08D7E96BD085FA2AFA46D7B36E3F312A6C4D633363411EF763449D700F'
 $BundleRoot = $PSScriptRoot
 $LoaderArchive = Join-Path $BundleRoot 'vendor\LiteLoaderQQNT-1.4.1.zip'
 $BridgeDll = Join-Path $BundleRoot 'vendor\dbghelp_x64-1.1.2.dll'
-$PluginArchive = Join-Path $BundleRoot 'QQ-Local-Recall-v1.4.2.zip'
+$PluginArchive = Get-ChildItem -LiteralPath $BundleRoot -File -Filter 'QQ-Local-Recall-v*.zip' |
+    Where-Object { $_.Name -match '^QQ-Local-Recall-v[0-9.]+\.zip$' } |
+    Sort-Object Name -Descending | Select-Object -First 1 -ExpandProperty FullName
+if (-not $PluginArchive) { throw "Missing plugin archive: no QQ-Local-Recall-v*.zip in $BundleRoot" }
 
 function Get-QQInstallCandidates {
     $paths = @('D:\QQ', 'C:\QQ')

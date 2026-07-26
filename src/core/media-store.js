@@ -217,9 +217,14 @@ class PttStore {
   saveFile(sourcePath) {
     const stats = fs.statSync(sourcePath);
     if (!stats.isFile()) throw new TypeError('PTT source must be a file');
+    if (stats.size > MAX_MEDIA_BYTES) throw new RangeError('media exceeds 20 MiB');
     const ext = path.extname(sourcePath).replace('.', '').toLowerCase();
     const validExt = AUDIO_EXTENSIONS.has(ext) ? ext : 'amr';
     const bytes = fs.readFileSync(sourcePath);
+    const header = bytes.subarray(0, 10).toString('latin1');
+    if (!header.startsWith('#!AMR') && !header.startsWith('#!SILK') && !header.startsWith('\x02#!SILK')) {
+      throw new TypeError('unsupported PTT bytes');
+    }
     const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
     const relativePath = `ptt/${sha256}.${validExt}`;
     const absolutePath = path.join(this.rootDir, 'ptt', `${sha256}.${validExt}`);

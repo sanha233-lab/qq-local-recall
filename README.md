@@ -2,7 +2,7 @@
 
 面向 Windows x64 QQ `9.9.32-51246` 的 LiteLoaderQQNT 插件。插件只处理本机已经收到的消息，不修改 QQ 服务器状态或网络协议。
 
-> 最新版本：**1.4.3**。查看 [更新日志](CHANGELOG.md) 或 [GitHub Releases](https://github.com/sanha233-lab/qq-local-recall/releases)。
+> 最新版本：**1.4.4**。查看 [更新日志](CHANGELOG.md) 或 [GitHub Releases](https://github.com/sanha233-lab/qq-local-recall/releases)。
 
 ## 功能
 
