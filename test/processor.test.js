@@ -736,9 +736,8 @@ test('an unplayed video recall is persisted from its thumbnail without a body re
     fileTime: 10, fileSize: '1951226', thumbPath: new Map([[0, thumbPath]]),
   })] } });
 
-  const result = processor.processEvent({ cmdName: 'onMsgInfoListUpdate', payload: { msgList: [recallMessage({
-    msgId: 'vid2', msgTime: '1000', recallTime: '1100',
-  })] } });
+  const recallPayload = { msgList: [recallMessage({ msgId: 'vid2', msgTime: '1000', recallTime: '1100' })] };
+  const result = processor.processEvent({ cmdName: 'onMsgInfoListUpdate', payload: recallPayload });
 
   assert.deepEqual(result.recoveredIds, ['vid2']);
   assert.equal(result.messageKinds.vid2, 'video');
@@ -746,4 +745,8 @@ test('an unplayed video recall is persisted from its thumbnail without a body re
   assert.equal(persisted.qqLocalRecallMedia, undefined);
   assert.equal(Number(persisted.videoElement.fileTime), 10);
   assert.equal(fs.existsSync(path.join(videoStore.videoDir, 'never-downloaded.mp4')), false);
+  // filePath/fileSize must be cleared so QQNT renders thumbnail, not 0% spinner
+  const recoveredEl = recallPayload.msgList[0].elements[0];
+  assert.equal(recoveredEl.videoElement.filePath, '');
+  assert.equal(recoveredEl.videoElement.fileSize, '0');
 });
