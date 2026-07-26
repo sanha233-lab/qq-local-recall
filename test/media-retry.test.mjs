@@ -41,6 +41,31 @@ test('media retry coordinator retries failures, strips DOM nodes and stops after
   assert.equal(node.src, 'file:///saved.gif');
 });
 
+test('media retry coordinator reapplies a saved display URL after QQ replaces the image node', async () => {
+  const firstNode = { src: 'loading-first' };
+  const replacementNode = { src: 'loading-replacement' };
+  let captures = 0;
+  let persists = 0;
+  const coordinator = createMediaRetryCoordinator({
+    capture: async () => [{
+      sourceUrl: 'appimg://D/a',
+      node: captures++ === 0 ? firstNode : replacementNode,
+    }],
+    async persist() {
+      persists += 1;
+      return { displayUrl: 'file:///saved.png' };
+    },
+    schedule() {},
+  });
+
+  await coordinator.attempt('m1', false);
+  await coordinator.attempt('m1', false);
+
+  assert.equal(persists, 1);
+  assert.equal(firstNode.src, 'file:///saved.png');
+  assert.equal(replacementNode.src, 'file:///saved.png');
+});
+
 test('media retry coordinator replaces a final loading node with unavailable text', async () => {
   const replacements = [];
   const node = {

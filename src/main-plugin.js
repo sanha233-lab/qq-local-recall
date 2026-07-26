@@ -1,7 +1,6 @@
 'use strict';
 
 const path = require('node:path');
-const { pathToFileURL } = require('node:url');
 const {
   MAX_MEDIA_BYTES, MediaStore, readPngDimensions, validateAspectRatio,
 } = require('./core/media-store');
@@ -13,6 +12,14 @@ const { isLocalStoragePath, writeStoragePath } = require('./core/storage-path');
 const { CHANNELS } = require('./preload-api');
 
 const RECOVERED_CHANNEL = 'qq-local-recall:recovered';
+
+function pathToAppImageUrl(filePath) {
+  const absolutePath = path.win32.resolve(filePath);
+  const root = path.win32.parse(absolutePath).root;
+  if (!/^[A-Za-z]:\\$/.test(root)) throw new TypeError('display path must use a local drive');
+  const encodedPath = absolutePath.slice(root.length).split(path.win32.sep).map(encodeURIComponent).join('/');
+  return `appimg://${root[0].toUpperCase()}/${encodedPath}`;
+}
 
 function validatePersistedMediaInput(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -166,7 +173,7 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
       return {
         ok: true,
         reference: publicReference(reference),
-        displayUrl: pathToFileURL(displayPath).href,
+        displayUrl: pathToAppImageUrl(displayPath),
       };
     });
     ipcMain.handle(CHANNELS.settings, () => ({ ...settings }));

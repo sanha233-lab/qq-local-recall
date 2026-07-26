@@ -108,7 +108,7 @@ test('sanitizeMessage keeps only the fixed persisted media reference fields', ()
   });
 });
 
-test('sanitizeMessage keeps a locally cached QQ picture and its rendering fields', () => {
+test('sanitizeMessage keeps local picture rendering fields without persisting its media URL', () => {
   const sourcePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-pic-')), 'cached.jpg');
   fs.writeFileSync(sourcePath, 'cached');
   const picElement = {
@@ -121,10 +121,16 @@ test('sanitizeMessage keeps a locally cached QQ picture and its rendering fields
   const sanitized = sanitizeMessage(textMessage({ elements: [{
     elementType: 2, elementId: 'pic-1', extBufForUI: 'pic-ui', picElement,
   }] }));
+  const expectedPicElement = { ...picElement };
+  delete expectedPicElement.originImageUrl;
 
   assert.deepEqual(sanitized.elements[0], {
-    elementType: 2, elementId: 'pic-1', extBufForUI: 'pic-ui', picElement,
+    elementType: 2,
+    elementId: 'pic-1',
+    extBufForUI: 'pic-ui',
+    picElement: expectedPicElement,
   });
+  assert.equal(JSON.stringify(sanitized).includes('/remote/path'), false);
 });
 
 test('sanitizeMessage rejects a picture when no referenced local file exists', () => {

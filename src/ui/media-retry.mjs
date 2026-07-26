@@ -28,7 +28,7 @@ function markUnavailable(node) {
 }
 
 export function createMediaRetryCoordinator({ capture, persist, schedule = setTimeout, finalize = () => {} }) {
-  const completed = new Set();
+  const completed = new Map();
   const inFlight = new Set();
   const started = new Set();
 
@@ -37,15 +37,20 @@ export function createMediaRetryCoordinator({ capture, persist, schedule = setTi
     for (let mediaIndex = 0; mediaIndex < candidates.length; mediaIndex += 1) {
       if (!candidates[mediaIndex]) continue;
       const identity = `${messageId}:${mediaIndex}`;
-      if (completed.has(identity) || inFlight.has(identity)) continue;
       const candidate = candidates[mediaIndex];
+      if (completed.has(identity)) {
+        const displayUrl = completed.get(identity);
+        if (displayUrl && candidate.node) candidate.node.src = displayUrl;
+        continue;
+      }
+      if (inFlight.has(identity)) continue;
       inFlight.add(identity);
       let saved = false;
       try {
         for (const input of inputsFor(messageId, mediaIndex, candidate)) {
           try {
             const result = await persist(input);
-            completed.add(identity);
+            completed.set(identity, String(result?.displayUrl || ''));
             if (result?.displayUrl && candidate.node) candidate.node.src = result.displayUrl;
             saved = true;
             break;

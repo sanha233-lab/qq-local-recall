@@ -60,6 +60,20 @@ test('captureRenderedMedia returns one appimg candidate per real media container
   assert.deepEqual(result, [{ sourceUrl, staticFallback: false, node }]);
 });
 
+test('captureRenderedMedia keeps a Canvas fallback with a completed appimg candidate', async () => {
+  const sourceUrl = 'appimg://D/QQ/Tencent%20Files/123/nt_qq/nt_data/Pic/a.png';
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+  const node = image({ currentSrc: sourceUrl, naturalWidth: 864, naturalHeight: 1920 });
+  node.ownerDocument = canvasDocument(new Blob([png], { type: 'image/png' }));
+
+  const [candidate] = await captureRenderedMedia(contentWith([containerWith([node])]));
+
+  assert.equal(candidate.sourceUrl, sourceUrl);
+  assert.equal(candidate.width, 864);
+  assert.equal(candidate.height, 1920);
+  assert.deepEqual([...candidate.bytes], [...png]);
+});
+
 test('captureRenderedMedia reports an HTTPS candidate before the image finishes loading', async () => {
   const sourceUrl = 'https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=f1&spec=0&rkey=secret';
   const node = image({ currentSrc: sourceUrl, complete: false, naturalWidth: 0, naturalHeight: 0 });

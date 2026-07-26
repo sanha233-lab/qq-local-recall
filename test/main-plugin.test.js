@@ -187,7 +187,7 @@ test('Canvas media IPC rejects a 60x60 placeholder and persists a matching portr
   });
 
   assert.equal(result.ok, true);
-  assert.match(result.displayUrl, /^file:/);
+  assert.match(result.displayUrl, /^appimg:\/\/[A-Z]\//);
   assert.equal('sourceUrl' in result, false);
   assert.equal(plugin.store.get('m1').message.elements[0].qqLocalRecallMedia.staticFallback, true);
 });
@@ -213,7 +213,7 @@ test('HTTPS media IPC uses only the invoking QQ session and returns no temporary
   );
 
   assert.equal(calls.length, 1);
-  assert.match(result.displayUrl, /^file:/);
+  assert.match(result.displayUrl, /^appimg:\/\/[A-Z]\//);
   assert.equal(JSON.stringify(result).includes('temporary-key'), false);
   const recordName = fs.readdirSync(path.join(dataDir, 'records'))[0];
   const recordText = fs.readFileSync(path.join(dataDir, 'records', recordName), 'utf8');

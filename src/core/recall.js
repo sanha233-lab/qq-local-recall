@@ -68,6 +68,7 @@ function sanitizeMessage(message, { requireLocalMedia = true, allowMissingMedia 
     if (requireLocalMedia && key === 'marketFaceElement' && !persistedMedia && !hasLocalMarketFace(element.marketFaceElement)
       && !allowMissingMedia) return [];
     const sanitized = { elementType: Number(element.elementType), [key]: clone(element[key]) };
+    if (key === 'picElement') delete sanitized.picElement.originImageUrl;
     if (element.elementId !== undefined) sanitized.elementId = clone(element.elementId);
     if (element.extBufForUI !== undefined) sanitized.extBufForUI = clone(element.extBufForUI);
     if (persistedMedia && typeof persistedMedia === 'object') {

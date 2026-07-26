@@ -57,7 +57,10 @@ export async function captureRenderedMedia(content) {
     const tagName = String(node?.tagName || '').toUpperCase();
     const sourceUrl = String(node?.currentSrc || node?.src || '');
     if (tagName === 'IMG' && sourceUrl.startsWith('appimg:')) {
-      results[mediaIndex] = { sourceUrl, staticFallback: false, node };
+      const fallback = await renderPng(node);
+      results[mediaIndex] = fallback
+        ? { ...fallback, sourceUrl, staticFallback: false }
+        : { sourceUrl, staticFallback: false, node };
       continue;
     }
     if (tagName === 'IMG' && sourceUrl.startsWith('https:')) {
