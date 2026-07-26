@@ -2,9 +2,10 @@
 delivery/backup/
 delivery/.staging/
 
-# Internal work logs may contain local machine paths
+# Internal work logs may contain local machine paths or private chat details
 progress.md
 task_plan.md
+findings.md
 docs/superpowers/
 
 # Superseded friend bundle held by another process; use the AutoDetect archive
