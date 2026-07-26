@@ -150,6 +150,28 @@ class RecallProcessor {
             this._log({ ev: 'voiceLike', msgId: val.msgId, chatType: val.chatType,
               peerUid: val.peerUid, senderUid: val.senderUid, types });
           }
+          const hasVideoLike = types.some(t => Number(t.et) === 5
+            || (t.k || []).some(k => /video/i.test(k)));
+          if (hasVideoLike) {
+            const videoEl = val.elements.find(e => e?.videoElement)?.videoElement;
+            // Record which referenced paths exist right now; the files may be
+            // gone by the time the log is read.
+            const exists = {};
+            const check = (label, p) => {
+              if (typeof p === 'string' && p.length > 3 && /[\\/]/.test(p)) {
+                try { exists[label] = fs.existsSync(p); } catch {}
+              }
+            };
+            for (const [key, v] of Object.entries(videoEl || {})) {
+              if (v instanceof Map) { let i = 0; for (const item of v.values()) check(`${key}.${i++}`, item); }
+              else if (v && typeof v === 'object' && !Array.isArray(v)) {
+                for (const [k2, v2] of Object.entries(v)) check(`${key}.${k2}`, v2);
+              } else check(key, v);
+            }
+            this._log({ ev: 'videoLike', msgId: val.msgId, chatType: val.chatType,
+              peerUid: val.peerUid, senderUid: val.senderUid, types,
+              video: this._safeStr(videoEl, 4000), exists });
+          }
         }
         if (val.cmdName && /onRichMediaDownloadComplete/.test(String(val.cmdName))) {
           this._log({ ev: 'richMediaCmd', notifyInfo: this._safeStr(val.payload?.notifyInfo) });
