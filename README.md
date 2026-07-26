@@ -25,14 +25,14 @@
 - 插件安装前、QQ 离线期间已经完成的撤回。
 - QQ 更新到新版本后的自动适配（版本与已验证基线不一致时，管理页会显示提醒但不阻止运行）。
 
-## 使用
+## 安装
 
-1. 完全退出 QQ。
-2. 以 PowerShell 运行交付目录中的 `install.ps1`。
-3. 启动 QQ，在“设置 > QQ 本地防撤回”中打开记录管理。
-4. 如需恢复原状，完全退出 QQ 后运行 `rollback.ps1`。
+前提：Windows x64 QQ `9.9.32-51246`。从 [Releases](https://github.com/sanha233-lab/qq-local-recall/releases/latest) 下载对应附件：
 
-详细说明见 [docs/installation.md](docs/installation.md)。
+- **已安装 LiteLoaderQQNT**：下载 `QQ-Local-Recall-vX.Y.Z.zip`，完全退出 QQ，删除 LiteLoaderQQNT `plugins` 目录中的旧插件文件夹（如有），放入解压出的 `QQ-Local-Recall` 文件夹，重新启动 QQ。升级同理；已保存的撤回记录在插件数据目录中，不会丢失。
+- **未安装 LiteLoaderQQNT**：下载 `QQ-Local-Recall-vX.Y.Z-installer.zip`，解压后完全退出 QQ，以 PowerShell 运行其中的 `install.ps1`（自动安装 LiteLoaderQQNT、加载桥接和本插件，不替换 `QQ.exe`）；恢复原状运行 `rollback.ps1`。
+
+启动 QQ 后，在“设置 > QQ 本地防撤回”中打开记录管理。详细说明见 [docs/installation.md](docs/installation.md)。
 
 记录保存位置可在“管理记录”窗口中查看并修改；媒体保存在当前记录根目录的 `media/`，单项上限 20 MiB，并按 SHA-256 去重。“缺失媒体自动回源”默认开启，关闭后只使用 QQ `Pic/Emoji` 本机原件或有效 Canvas；临时 URL、`fileid` 和 `rkey` 不写入记录或日志。
 
