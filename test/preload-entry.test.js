@@ -39,7 +39,7 @@ test('sandboxed manager preload exposes a separate API to avoid the global QQ pr
 
   assert.equal(exposed.key, 'qqLocalRecallManager');
   assert.deepEqual(Object.keys(exposed.value).sort(), [
-    'chooseStoragePath', 'deleteConversations', 'getSettings', 'getStoragePath', 'listConversations',
-    'onRecordsDeleted', 'updateSettings',
+    'chooseStoragePath', 'deleteConversations', 'deleteRecord', 'getSettings', 'getStoragePath',
+    'listConversations', 'listRecords', 'onRecordsDeleted', 'updateSettings',
   ]);
 });

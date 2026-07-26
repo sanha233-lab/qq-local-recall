@@ -174,15 +174,20 @@ class MediaStore {
     const destinationMedia = path.join(destinationRoot, 'media');
     fs.mkdirSync(destinationMedia, { recursive: true });
     for (const reference of references) {
+      const relativePath = String(reference?.relativePath || '').replaceAll('\\', '/');
+      if (!REFERENCE_PATH.test(relativePath)) continue;
       const source = this.resolve(reference);
-      const { relativePath } = referenceParts(reference);
       const destination = path.join(destinationRoot, ...relativePath.split('/'));
       fs.copyFileSync(source, destination);
     }
   }
 
   sweep(references) {
-    const retained = new Set(references.map(reference => referenceParts(reference).relativePath));
+    const retained = new Set(
+      references
+        .map(reference => String(reference?.relativePath || '').replaceAll('\\', '/'))
+        .filter(relativePath => REFERENCE_PATH.test(relativePath)),
+    );
     const removed = [];
     for (const name of fs.readdirSync(this.mediaDir)) {
       const relativePath = `media/${name}`;

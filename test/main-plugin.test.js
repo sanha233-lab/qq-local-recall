@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { createPlugin, validatePersistedMediaInput } = require('../src/main-plugin');
+const { PttStore } = require('../src/core/media-store');
 
 function message(elements, overrides = {}) {
   return {
@@ -269,6 +270,35 @@ test('deleting conversations removes media only after the final reference', asyn
 
   await electron.handlers.get('qq-local-recall:delete-conversations')({}, ['friend:u2']);
   assert.equal(fs.existsSync(saved.absolutePath), false);
+});
+
+test('deleting a single voice record through the IPC handler sweeps its ptt file', async () => {
+  const electron = fakeElectron();
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-main-'));
+  const plugin = createPlugin({
+    electron, dataDir, managerHtmlPath: 'manager.html', managerPreloadPath: 'manager-preload.js',
+  });
+  plugin.start();
+  const image = plugin.mediaStore.saveBytes(PNG, 'image/png', true);
+  const imageReference = { ...image };
+  delete imageReference.absolutePath;
+  const voiceSource = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-ptt-')), 'voice.amr');
+  fs.writeFileSync(voiceSource, Buffer.from('#!AMR\n voice payload', 'latin1'));
+  const voice = new PttStore(dataDir).saveFile(voiceSource);
+  const voiceReference = { sha256: voice.sha256, relativePath: voice.relativePath, sizeBytes: voice.sizeBytes };
+  plugin.store.save(mediaRecord('m1', 'friend:u1', imageReference));
+  plugin.store.save({
+    msgId: 'm2', peer: { key: 'friend:u1', type: 'friend', id: 'u1', name: '好友' }, recallTime: '2',
+    message: message([{
+      elementType: 3, pttElement: { filePath: voiceSource }, qqLocalRecallMedia: voiceReference,
+    }], { msgId: 'm2' }),
+  });
+
+  const result = await electron.handlers.get('qq-local-recall:delete-record')({}, 'friend:u1', 'm2');
+
+  assert.deepEqual(result, { deleted: true });
+  assert.equal(fs.existsSync(voice.absolutePath), false);
+  assert.equal(fs.existsSync(image.absolutePath), true);
 });
 
 test('changing storage root copies referenced media but not orphans', async () => {

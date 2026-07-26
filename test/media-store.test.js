@@ -136,6 +136,22 @@ test('copyReferencedTo copies only valid referenced media and sweep deletes only
   assert.equal(fs.existsSync(orphan.absolutePath), false);
 });
 
+test('copyReferencedTo and sweep tolerate mixed image and voice references', () => {
+  const store = new MediaStore(makeRoot());
+  const keep = store.saveBytes(PNG, 'image/png', true);
+  const orphan = store.saveBytes(JPEG, 'image/jpeg', false);
+  const voiceSha = 'a'.repeat(64);
+  const voiceReference = { sha256: voiceSha, relativePath: `ptt/${voiceSha}.amr`, sizeBytes: 5 };
+  const nextRoot = makeRoot('qq-local-recall-media-mixed-');
+
+  store.copyReferencedTo(nextRoot, [keep, voiceReference]);
+  assert.equal(fs.existsSync(path.join(nextRoot, keep.relativePath)), true);
+
+  assert.deepEqual(store.sweep([keep, voiceReference]), [orphan.relativePath]);
+  assert.equal(fs.existsSync(keep.absolutePath), true);
+  assert.equal(fs.existsSync(orphan.absolutePath), false);
+});
+
 test('copyReferencedTo replaces a corrupt destination with the validated source bytes', () => {
   const store = new MediaStore(makeRoot());
   const reference = store.saveBytes(PNG, 'image/png', true);

@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.4.3] - 2026-07-26
+
+### Fixed
+
+- 修复 `manifest.json` 中文字段双重编码损坏（JSON 无法解析，源码无法打包/加载）；同步修复 `package.json` 的乱码 description。
+- 管理页 preload 补齐 `listRecords`/`deleteRecord` 桥接，修复 1.4.2 "展开会话/逐条删除"点击即抛 TypeError 且按钮卡死的问题；同步修正 preload 契约测试的期望键列表。
+- `MediaStore.sweep`/`copyReferencedTo` 改为过滤非图片引用（与 `PttStore` 对称），修复存在语音撤回记录时单条删除、批量删除、更改存储路径三条链路必现报错的问题。
+
+### Security
+
+- 停止跟踪含隐私信息的内部工作记录 `findings.md` 并加入 `.gitignore`；`docs/testing.md` 中的真实群成员昵称与本机盘符路径已脱敏。
+
+### Verification
+
+- `npm test`: 131 tests passed.
+- `npm run check`: passed.
+
 ## [1.4.2] - 2026-07-26
 
 ### Added

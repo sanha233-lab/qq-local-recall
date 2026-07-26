@@ -1,13 +1,13 @@
-﻿{
+{
   "manifest_version": 4,
   "type": "extension",
-  "name": "QQ 鏈湴闃叉挙鍥?,
+  "name": "QQ 本地防撤回",
   "slug": "qq_local_recall",
-  "description": "浠呭湪鏈満淇濈暀鏂囧瓧銆丵Q 琛ㄦ儏銆佸洖澶嶅拰鏈湴濯掍綋鍓湰锛屽苟鎻愪緵鎸変細璇濇竻鐞嗗姛鑳姐€?,
-  "version": "1.4.2",
+  "description": "仅在本机保留文字、QQ 表情、回复和本地媒体副本，并提供按会话清理功能。",
+  "version": "1.4.3",
   "authors": [
     {
-      "name": "鍩轰簬 xh321/LiteLoaderQQNT-Anti-Recall 鐨勬湰鍦板疄鐜?
+      "name": "基于 xh321/LiteLoaderQQNT-Anti-Recall 的本地实现"
     }
   ],
   "platform": ["win32"],
