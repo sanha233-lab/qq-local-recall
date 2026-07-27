@@ -333,15 +333,30 @@ class RecallProcessor {
         }
       }
     } else {
-      // No in-session download — clear filePath/fileSize when file is absent so QQNT renders the
-      // thumbnail instead of a "0% downloading" spinner (fileSize>0 + missing file triggers that state).
-      // Skip elements whose filePath was already resolved to an existing file (persisted-body restart path).
       for (const element of (recovered.elements || [])) {
         if (Number(element?.elementType) === 5 && element.videoElement) {
-          if (!element.videoElement.filePath || !fs.existsSync(element.videoElement.filePath)) {
-            element.videoElement.filePath = '';
-            element.videoElement.fileSize = '0';
+          this._log({ ev: 'videoRestorePre', messageId, video: this._safeStr(element.videoElement, 6000) });
+          const ve = element.videoElement;
+          if (!ve.filePath || !fs.existsSync(ve.filePath)) {
+            // Video body not downloaded; fall back to thumbnail so QQNT renders a
+            // preview image + play button instead of a 0% download spinner.
+            // transferStatus=4 signals "locally available" to the QQNT renderer.
+            let thumbFile = null;
+            if (ve.thumbPath instanceof Map) {
+              for (const [, p] of ve.thumbPath) {
+                if (p && typeof p === 'string' && fs.existsSync(p)) { thumbFile = p; break; }
+              }
+            }
+            if (thumbFile) {
+              ve.filePath = thumbFile;
+              ve.fileSize = String(fs.statSync(thumbFile).size);
+              ve.transferStatus = 4;
+            } else {
+              ve.filePath = '';
+              ve.fileSize = '0';
+            }
           }
+          this._log({ ev: 'videoRestorePost', messageId, video: this._safeStr(element.videoElement, 6000) });
         }
       }
     }
