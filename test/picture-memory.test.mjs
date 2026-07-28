@@ -58,11 +58,11 @@ test('picture memory restores a cloned rendered image without sharing live DOM n
 
 test('picture memory ignores content without rendered media and evicts the oldest snapshot', () => {
   const snapshots = new Map();
-  assert.equal(rememberPictureContent(snapshots, 'text', new FakeElement('text'), 1), false);
+  assert.equal(rememberPictureContent(snapshots, 'text', new FakeElement('text'), { limit: 1 }), false);
   const first = new FakeElement('first', { media: true });
   const second = new FakeElement('second', { media: true });
-  rememberPictureContent(snapshots, 'm1', first, 1);
-  rememberPictureContent(snapshots, 'm2', second, 1);
+  rememberPictureContent(snapshots, 'm1', first, { limit: 1 });
+  rememberPictureContent(snapshots, 'm2', second, { limit: 1 });
 
   assert.equal(snapshots.has('m1'), false);
   assert.equal(snapshots.has('m2'), true);
@@ -78,4 +78,19 @@ test('picture memory does not restore a loading snapshot over the final unavaila
 
   assert.equal(restored, true);
   assert.equal(target.replaceChildrenCalls, 0);
+});
+
+test('picture memory preserves the pre-recall snapshot after QQ replaces the image', () => {
+  const snapshots = new Map();
+  const original = new FakeElement('original-content');
+  original.appendChild(new FakeElement('original-picture', { media: true }));
+  const failed = new FakeElement('failed-content');
+  failed.appendChild(new FakeElement('loading-failed', { media: true }));
+  rememberPictureContent(snapshots, 'm1', original);
+
+  rememberPictureContent(snapshots, 'm1', failed, { overwrite: false });
+  const target = new FakeElement('target');
+  restorePictureContent(snapshots, 'm1', target);
+
+  assert.equal(target.children[0].name, 'original-picture');
 });

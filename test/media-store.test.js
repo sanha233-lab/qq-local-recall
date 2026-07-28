@@ -90,6 +90,13 @@ test('static PNG dimensions reject a 60x60 placeholder for an 864x1920 picture',
   assert.equal(store.resolve(portrait, { width: 864, height: 1920 }), portrait.absolutePath);
 });
 
+test('appimg PNG dimensions reject a 60x60 placeholder for a landscape picture', () => {
+  const store = new MediaStore(makeRoot());
+  const placeholder = store.saveBytes(pngWithDimensions(60, 60), '', false);
+
+  assert.throws(() => store.resolve(placeholder, { width: 1320, height: 1181 }), /dimensions/);
+});
+
 test('static PNG dimensions do not impose a minimum size without original dimensions', () => {
   const store = new MediaStore(makeRoot());
   const expression = store.saveBytes(pngWithDimensions(24, 24), 'image/png', true);

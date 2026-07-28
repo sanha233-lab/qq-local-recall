@@ -53,5 +53,12 @@ $InstallerZip = Join-Path $Delivery "QQ-Local-Recall-v$Version-installer.zip"
 Remove-Item -LiteralPath $InstallerZip -Force -ErrorAction SilentlyContinue
 Compress-Archive -Path (Join-Path $InstallerRoot '*') -DestinationPath $InstallerZip -CompressionLevel Optimal
 
+$installerHash = (Get-FileHash -LiteralPath $InstallerZip -Algorithm SHA256).Hash
+[IO.File]::AppendAllText(
+    (Join-Path $Delivery 'SHA256SUMS.txt'),
+    "$installerHash  $([IO.Path]::GetFileName($InstallerZip))`n",
+    [Text.UTF8Encoding]::new($false)
+)
+
 Remove-Item -LiteralPath $Stage -Recurse -Force
 Write-Host "Delivery package created: $Delivery"

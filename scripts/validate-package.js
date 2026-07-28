@@ -23,6 +23,7 @@ const delivery = path.join(root, 'delivery');
 const expectedDelivery = [
   `QQ-Local-Recall-v${pkg.version}.zip`,
   `QQ-Local-Recall-source-v${pkg.version}.zip`,
+  `QQ-Local-Recall-v${pkg.version}-installer.zip`,
   'install.ps1',
   'rollback.ps1',
   'vendor/LiteLoaderQQNT-1.4.1.zip',
@@ -61,8 +62,6 @@ if (fs.existsSync(sumsPath)) {
       throw new Error(`plugin archive missing entry: ${relative}`);
     }
   }
-  const installerZip = path.join(delivery, `QQ-Local-Recall-v${pkg.version}-installer.zip`);
-  if (!fs.existsSync(installerZip)) throw new Error('missing installer bundle; run "npm run package"');
   console.log('Package validation passed: Manifest V4, matching version, manager CSP, recovery entries, and SHA-256 checks verified.');
 } else {
   console.log('Package validation passed: Manifest V4, matching version and manager CSP verified (delivery artifacts absent; run "npm run package" before release).');

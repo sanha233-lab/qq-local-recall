@@ -292,7 +292,10 @@ class RecallProcessor {
   restoreWithId(recallMessage, info, messageId, cached, stored) {
     const storedMessage = this.resolveStoredMedia(stored?.message);
     const persistableOriginal = sanitizeMessage(storedMessage || cached);
-    const currentSessionOriginal = sanitizeMessage(cached, { allowMissingMedia: true });
+    const currentSessionOriginal = sanitizeMessage(cached, {
+      allowMissingMedia: true,
+      preserveTransientMediaUrl: true,
+    });
     const original = currentSessionOriginal || persistableOriginal;
     const recovered = recoverRecall(recallMessage, original, { preventSelf: this.preventSelf });
     if (!recovered) return null;

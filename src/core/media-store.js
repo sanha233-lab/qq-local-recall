@@ -51,6 +51,9 @@ function validateAspectRatio(actual, expected) {
   const width = Number(expected?.width);
   const height = Number(expected?.height);
   if (!Number.isInteger(width) || width < 1 || !Number.isInteger(height) || height < 1) return;
+  if (actual.width <= 64 && actual.height <= 64 && (width > 128 || height > 128)) {
+    throw new TypeError('static fallback aspect ratio or dimensions mismatch');
+  }
   const expectedRatio = width / height;
   const actualRatio = actual.width / actual.height;
   if (Math.abs(actualRatio - expectedRatio) / expectedRatio > 0.15) {
@@ -163,7 +166,7 @@ class MediaStore {
     const bytes = fs.readFileSync(absolutePath);
     const actualHash = crypto.createHash('sha256').update(bytes).digest('hex');
     if (actualHash !== sha256) throw new Error('media SHA-256 mismatch');
-    if (reference.staticFallback === true) {
+    if (reference.mimeType === 'image/png') {
       validateAspectRatio(readPngDimensions(bytes), expectedDimensions);
     }
     return absolutePath;

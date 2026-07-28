@@ -1,6 +1,13 @@
-export function rememberPictureContent(snapshots, messageId, content, limit = 500) {
-  if (!snapshots || !content?.querySelector?.('img, canvas, video, svg')) return false;
+export function rememberPictureContent(
+  snapshots,
+  messageId,
+  content,
+  { limit = 500, overwrite = true } = {},
+) {
+  if (!snapshots) return false;
   const id = String(messageId);
+  if (!overwrite) return snapshots.has(id);
+  if (!content?.querySelector?.('img, canvas, video, svg')) return false;
   snapshots.delete(id);
   snapshots.set(id, content.cloneNode(true));
   while (snapshots.size > limit) snapshots.delete(snapshots.keys().next().value);

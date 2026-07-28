@@ -133,6 +133,23 @@ test('sanitizeMessage keeps local picture rendering fields without persisting it
   assert.equal(JSON.stringify(sanitized).includes('/remote/path'), false);
 });
 
+test('sanitizeMessage can retain a temporary picture URL for current-session recovery only', () => {
+  const originImageUrl = 'https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=f1&spec=0&rkey=temporary';
+  const message = textMessage({ elements: [{
+    elementType: 2,
+    picElement: { sourcePath: 'missing.jpg', originImageUrl },
+  }] });
+
+  const currentSession = sanitizeMessage(message, {
+    allowMissingMedia: true,
+    preserveTransientMediaUrl: true,
+  });
+  const persistable = sanitizeMessage(message, { allowMissingMedia: true });
+
+  assert.equal(currentSession.elements[0].picElement.originImageUrl, originImageUrl);
+  assert.equal(persistable.elements[0].picElement.originImageUrl, undefined);
+});
+
 test('sanitizeMessage rejects a picture when no referenced local file exists', () => {
   const missing = path.join(os.tmpdir(), `qq-local-recall-missing-${process.pid}.jpg`);
   const message = textMessage({ elements: [{

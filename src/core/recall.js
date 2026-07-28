@@ -75,7 +75,11 @@ function hasLocalVideo(video) {
   return thumbs.some(file => typeof file === 'string' && file.length > 0 && fs.existsSync(file));
 }
 
-function sanitizeMessage(message, { requireLocalMedia = true, allowMissingMedia = false } = {}) {
+function sanitizeMessage(message, {
+  requireLocalMedia = true,
+  allowMissingMedia = false,
+  preserveTransientMediaUrl = false,
+} = {}) {
   if (!message || typeof message !== 'object' || !message.msgId || !Array.isArray(message.elements)) {
     return null;
   }
@@ -95,7 +99,7 @@ function sanitizeMessage(message, { requireLocalMedia = true, allowMissingMedia 
     if (requireLocalMedia && key === 'videoElement' && !persistedMedia && !hasLocalVideo(element.videoElement)
       && !allowMissingMedia) return [];
     const sanitized = { elementType: Number(element.elementType), [key]: clone(element[key]) };
-    if (key === 'picElement') delete sanitized.picElement.originImageUrl;
+    if (key === 'picElement' && !preserveTransientMediaUrl) delete sanitized.picElement.originImageUrl;
     if (key === 'pttElement' && sanitized.pttElement) {
       delete sanitized.pttElement.fileUrl;
       delete sanitized.pttElement.bufKey;
@@ -201,7 +205,10 @@ class CandidateCache {
   }
 
   set(message) {
-    const sanitized = sanitizeMessage(message, { requireLocalMedia: false });
+    const sanitized = sanitizeMessage(message, {
+      requireLocalMedia: false,
+      preserveTransientMediaUrl: true,
+    });
     if (!sanitized) return false;
     const id = String(sanitized.msgId);
     this.items.delete(id);

@@ -613,14 +613,16 @@ test('RecallProcessor does not replace self recalls by default', () => {
 
 test('RecallProcessor replays pictures without a local file in the current session only', () => {
   const processor = new RecallProcessor({ store: makeStore() });
+  const originImageUrl = 'https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=f1&spec=0&rkey=temporary';
   processor.processEvent({ cmdName: 'onRecvMsg', payload: { msgList: [textMessage({
-    elements: [{ elementType: 2, picElement: { sourcePath: 'x' } }],
+    elements: [{ elementType: 2, picElement: { sourcePath: 'x', originImageUrl } }],
   })] } });
   const event = { cmdName: 'onMsgInfoListUpdate', payload: { msgList: [recallMessage()] } };
 
   const result = processor.processEvent(event);
 
   assert.equal(event.payload.msgList[0].elements[0].picElement.sourcePath, 'x');
+  assert.equal(event.payload.msgList[0].elements[0].picElement.originImageUrl, originImageUrl);
   assert.equal(result.recallNotices.m1.memoryOnly, true);
   assert.equal(processor.store.get('m1'), undefined);
 });
@@ -725,7 +727,7 @@ test('RecallProcessor resolves a persisted video body against the store after re
   assert.deepEqual(fs.readFileSync(fullList.msgList[0].elements[0].videoElement.filePath), MP4_BODY);
 });
 
-test('an unplayed video recall is persisted from its thumbnail without a body reference', () => {
+test('an unplayed video recall uses its thumbnail without persisting a body reference', () => {
   const store = makeStore();
   const videoStore = new VideoStore(fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-video-root-')));
   const processor = new RecallProcessor({ store, videoStore });
@@ -745,8 +747,8 @@ test('an unplayed video recall is persisted from its thumbnail without a body re
   assert.equal(persisted.qqLocalRecallMedia, undefined);
   assert.equal(Number(persisted.videoElement.fileTime), 10);
   assert.equal(fs.existsSync(path.join(videoStore.videoDir, 'never-downloaded.mp4')), false);
-  // filePath/fileSize must be cleared so QQNT renders thumbnail, not 0% spinner
   const recoveredEl = recallPayload.msgList[0].elements[0];
-  assert.equal(recoveredEl.videoElement.filePath, '');
-  assert.equal(recoveredEl.videoElement.fileSize, '0');
+  assert.equal(recoveredEl.videoElement.filePath, thumbPath);
+  assert.equal(recoveredEl.videoElement.fileSize, String(fs.statSync(thumbPath).size));
+  assert.equal(recoveredEl.videoElement.transferStatus, 4);
 });

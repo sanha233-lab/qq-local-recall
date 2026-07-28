@@ -47,7 +47,9 @@ function rememberVisiblePictures() {
   const nodes = document.querySelectorAll?.('[id$="-msgContainerMsgContent"], [id$="-msgContent"]') || [];
   for (const node of nodes) {
     const id = String(node.id || '').replace(/-(?:msgContainerMsgContent|msgContent)$/, '');
-    if (id) rememberPictureContent(pictureSnapshots, id, node.parentElement || node);
+    if (id) rememberPictureContent(pictureSnapshots, id, node.parentElement || node, {
+      overwrite: !recalledMessages.has(id),
+    });
   }
 }
 
