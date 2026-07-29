@@ -48,6 +48,7 @@ if (fs.existsSync(sumsPath)) {
     ...Object.values(manifest.injects || {}),
     'src/core/media-store.js',
     'src/core/qq-media-fetch.js',
+    'src/core/qq-native-media.js',
     'src/core/settings.js',
     'src/ui/media-capture.mjs',
     'src/ui/media-retry.mjs',

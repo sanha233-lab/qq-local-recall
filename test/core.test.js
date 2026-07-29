@@ -244,6 +244,22 @@ test('CandidateCache evicts the oldest message at its limit', () => {
   assert.equal(cache.size, 2);
 });
 
+test('CandidateCache reports media references retained by other candidates', () => {
+  const cache = new CandidateCache(2);
+  const reference = {
+    sha256: 'a'.repeat(64), relativePath: `media/${'a'.repeat(64)}.gif`,
+    mimeType: 'image/gif', sizeBytes: 10, staticFallback: false,
+  };
+  cache.set(textMessage({ msgId: 'one', elements: [{
+    elementType: 2, picElement: { fileUuid: 'one' }, qqLocalRecallMedia: reference,
+  }] }));
+  cache.set(textMessage({ msgId: 'two' }));
+
+  assert.deepEqual(cache.mediaReferences(), [reference]);
+  cache.delete('one');
+  assert.deepEqual(cache.mediaReferences(), []);
+});
+
 test('getRecallInfo recognizes a QQ revoke gray tip', () => {
   const recall = textMessage({
     elements: [{

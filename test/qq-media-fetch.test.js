@@ -32,6 +32,22 @@ test('restricted QQ fetch accepts supported image magic and ignores response MIM
   assert.ok(calls[0][1].signal instanceof AbortSignal);
 });
 
+test('restricted QQ fetch rejects an rkey-less relative URL before requesting', async () => {
+  const relative = `/download?appid=1407&fileid=${FILE_UUID}&spec=0`;
+  let requests = 0;
+  const fetch = async () => { requests += 1; return response(GIF); };
+
+  await assert.rejects(fetchQqMedia({ fetch, sourceUrl: relative, expectedFileUuid: FILE_UUID }));
+  assert.equal(requests, 0);
+});
+
+test('restricted QQ fetch reports only the rejected HTTP status', async () => {
+  await assert.rejects(fetchQqMedia({
+    fetch: async () => response(null, { status: 403 }),
+    sourceUrl: VALID_URL, expectedFileUuid: FILE_UUID,
+  }), /HTTP status 403/);
+});
+
 test('restricted QQ fetch validates every initial URL field before requesting', async () => {
   let calls = 0;
   const fetch = async () => { calls += 1; return response(GIF); };

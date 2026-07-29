@@ -40,7 +40,12 @@ class RecallProcessor {
     this.videoStore = videoStore;
     this.pendingMedia = new Map();
     this.pendingMediaLimit = cacheLimit;
-    this.cache = new CandidateCache(cacheLimit, messageId => this.pendingMedia.delete(messageId));
+    this.cache = new CandidateCache(cacheLimit, (messageId, message) => {
+      this.pendingMedia.delete(messageId);
+      if ((message?.elements || []).some(element => element?.qqLocalRecallMedia)) {
+        this.mediaStore?.sweep([...this.store.mediaReferences(), ...this.cache.mediaReferences()]);
+      }
+    });
     this.preventSelf = preventSelf;
     this.pttDownloads = new Map();
     this.videoDownloads = new Map();
@@ -59,8 +64,66 @@ class RecallProcessor {
     } catch { return '<err>'; }
   }
 
+  _logPictureCandidates(message, command) {
+    for (const element of (message?.elements || [])) {
+      const pic = element?.picElement;
+      if (!pic) continue;
+      const exists = value => typeof value === 'string' && value.length > 0 && fs.existsSync(value);
+      const thumbs = pic.thumbPath instanceof Map
+        ? [...pic.thumbPath.values()]
+        : Array.isArray(pic.thumbPath)
+          ? pic.thumbPath.map(entry => Array.isArray(entry) ? entry[1] : entry)
+          : Object.values(pic.thumbPath || {});
+      const rawUrl = String(pic.originImageUrl || '');
+      const queryIndex = rawUrl.indexOf('?');
+      const searchParams = new URLSearchParams(queryIndex >= 0 ? rawUrl.slice(queryIndex + 1) : '');
+      const urlState = /^https:/i.test(rawUrl)
+        ? 'https'
+        : rawUrl.startsWith('/')
+          ? 'relative'
+          : rawUrl
+            ? 'other'
+            : 'none';
+      this._log({
+        ev: 'pictureCandidate', command, messageId: String(message.msgId || ''),
+        sourceExists: exists(pic.sourcePath), fileExists: exists(pic.filePath),
+        existingThumbs: thumbs.filter(exists).length,
+        width: Number(pic.picWidth) || 0, height: Number(pic.picHeight) || 0,
+        fileSize: String(pic.fileSize || ''), hasFileUuid: Boolean(pic.fileUuid),
+        urlState, urlHasFileId: searchParams.has('fileid'), urlHasRkey: searchParams.has('rkey'),
+      });
+    }
+  }
+
+  _prefetchCandidates(message) {
+    const messageTime = Number(message?.msgTime);
+    const nowSeconds = Date.now() / 1000;
+    if (!Number.isFinite(messageTime) || messageTime < nowSeconds - 120 || messageTime > nowSeconds + 30) return [];
+    const candidates = [];
+    let mediaIndex = 0;
+    for (const element of (message?.elements || [])) {
+      const isMedia = Boolean(element?.picElement || element?.marketFaceElement);
+      if (!isMedia) continue;
+      const pic = element.picElement;
+      if (pic && !element.qqLocalRecallMedia) {
+        const thumbs = pic.thumbPath instanceof Map ? [...pic.thumbPath.values()] : Object.values(pic.thumbPath || {});
+        const hasLocal = [pic.sourcePath, pic.filePath, ...thumbs]
+          .some(value => typeof value === 'string' && value.length > 0 && fs.existsSync(value));
+        if (!hasLocal && element.elementId) {
+          candidates.push({
+            messageId: String(message.msgId), mediaIndex,
+            chatType: Number(message.chatType), peerUid: String(message.peerUid || ''),
+            elementId: String(element.elementId),
+          });
+        }
+      }
+      mediaIndex += 1;
+    }
+    return candidates;
+  }
+
   processEvent(event) {
-    const result = { recoveredIds: [], attemptedIds: [], messageKinds: {}, recallNotices: {} };
+    const result = { recoveredIds: [], attemptedIds: [], messageKinds: {}, recallNotices: {}, prefetchCandidates: [] };
     if (!event || typeof event !== 'object') return result;
     const command = String(event.cmdName || '');
     const payload = event.payload || {};
@@ -77,7 +140,11 @@ class RecallProcessor {
     for (let index = 0; index < messages.length; index += 1) {
       const message = messages[index];
       if (!getRecallInfo(message)) {
+        if (this._diagLog && /^(onRecvMsg|onRecvActiveMsg|onAddSendMsg)$/.test(command)) {
+          this._logPictureCandidates(message, command);
+        }
         this.cache.set(message);
+        result.prefetchCandidates.push(...this._prefetchCandidates(this.cache.get(message.msgId)));
         continue;
       }
       const recovered = this.restore(message);
@@ -104,12 +171,14 @@ class RecallProcessor {
   }
 
   processFullList(container) {
-    const result = { recoveredIds: [], attemptedIds: [], messageKinds: {}, recallNotices: {} };
+    const result = { recoveredIds: [], attemptedIds: [], messageKinds: {}, recallNotices: {}, prefetchCandidates: [] };
     if (!Array.isArray(container?.msgList)) return result;
     for (let index = 0; index < container.msgList.length; index += 1) {
       const message = container.msgList[index];
       if (!getRecallInfo(message)) {
+        if (this._diagLog) this._logPictureCandidates(message, 'fullList');
         this.cache.set(message);
+        result.prefetchCandidates.push(...this._prefetchCandidates(this.cache.get(message.msgId)));
         continue;
       }
       const recovered = this.restore(message);
@@ -137,6 +206,7 @@ class RecallProcessor {
     const attemptedIds = [];
     const messageKinds = {};
     const recallNotices = {};
+    const prefetchCandidates = [];
 
     // Diagnostic: scan raw IPC args for voice/recall data before processing
     if (this._diagLog) {
@@ -203,11 +273,13 @@ class RecallProcessor {
         attemptedIds.push(...result.attemptedIds);
         Object.assign(messageKinds, result.messageKinds);
         Object.assign(recallNotices, result.recallNotices);
+        prefetchCandidates.push(...result.prefetchCandidates);
       } else if (Array.isArray(value.msgList)) {
         const result = this.processFullList(value);
         recoveredIds.push(...result.recoveredIds);
         Object.assign(messageKinds, result.messageKinds);
         Object.assign(recallNotices, result.recallNotices);
+        prefetchCandidates.push(...result.prefetchCandidates);
       }
     };
     for (const value of args) visit(value);
@@ -216,6 +288,7 @@ class RecallProcessor {
       attemptedIds: [...new Set(attemptedIds)],
       messageKinds,
       recallNotices,
+      prefetchCandidates,
     };
   }
 
@@ -456,6 +529,13 @@ class RecallProcessor {
           element.picElement.sourcePath = absolutePath;
           element.picElement.filePath = absolutePath;
           element.picElement.fileSize = reference.sizeBytes;
+          element.picElement.transferStatus = 4;
+          const thumbs = element.picElement.thumbPath instanceof Map
+            ? [...element.picElement.thumbPath.values()]
+            : Object.values(element.picElement.thumbPath || {});
+          if (!thumbs.some(file => typeof file === 'string' && fs.existsSync(file))) {
+            element.picElement.thumbPath = new Map([[0, absolutePath]]);
+          }
         } else if (element.marketFaceElement) {
           if (reference.staticFallback) element.marketFaceElement.staticFacePath = absolutePath;
           else element.marketFaceElement.dynamicFacePath = absolutePath;
@@ -506,6 +586,31 @@ class RecallProcessor {
       this.pendingMedia.delete(id);
       this.cache.delete(id);
     }
+    return reference;
+  }
+
+  attachPrefetchedMedia({ messageId, mediaIndex, reference }) {
+    const id = String(messageId);
+    if (this.pendingMedia.has(id)) {
+      return this.persistRenderedMedia({ messageId: id, mediaIndex, reference });
+    }
+    const message = this.cache.get(id);
+    if (!message || !this.mediaStore) throw new Error('prefetched media candidate is unavailable');
+    const mediaElements = message.elements.filter(element => element?.picElement || element?.marketFaceElement);
+    const element = mediaElements[mediaIndex];
+    if (!element?.picElement) throw new RangeError('prefetched media index is out of range');
+    const pic = element.picElement;
+    const expectedDimensions = Number(pic.picWidth) > 0 && Number(pic.picHeight) > 0
+      ? { width: Number(pic.picWidth), height: Number(pic.picHeight) }
+      : undefined;
+    const absolutePath = this.mediaStore.resolve(reference, expectedDimensions);
+    element.qqLocalRecallMedia = {
+      sha256: reference.sha256, relativePath: reference.relativePath,
+      mimeType: reference.mimeType, sizeBytes: reference.sizeBytes, staticFallback: false,
+    };
+    pic.sourcePath = absolutePath;
+    pic.filePath = absolutePath;
+    pic.fileSize = reference.sizeBytes;
     return reference;
   }
 

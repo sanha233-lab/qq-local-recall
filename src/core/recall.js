@@ -211,6 +211,18 @@ class CandidateCache {
     });
     if (!sanitized) return false;
     const id = String(sanitized.msgId);
+    const previous = this.items.get(id);
+    for (let index = 0; index < sanitized.elements.length; index += 1) {
+      const nextElement = sanitized.elements[index];
+      const previousElement = previous?.elements?.[index];
+      if (!nextElement?.picElement || !previousElement?.qqLocalRecallMedia) continue;
+      if (String(nextElement.picElement.fileUuid || '')
+        !== String(previousElement.picElement?.fileUuid || '')) continue;
+      nextElement.qqLocalRecallMedia = clone(previousElement.qqLocalRecallMedia);
+      nextElement.picElement.sourcePath = previousElement.picElement.sourcePath;
+      nextElement.picElement.filePath = previousElement.picElement.filePath;
+      nextElement.picElement.fileSize = previousElement.picElement.fileSize;
+    }
     this.items.delete(id);
     this.items.set(id, sanitized);
     while (this.items.size > this.limit) {
@@ -225,8 +237,9 @@ class CandidateCache {
 
   delete(messageId) {
     const id = String(messageId);
+    const message = this.items.get(id);
     const deleted = this.items.delete(id);
-    if (deleted) this.onDelete?.(id);
+    if (deleted) this.onDelete?.(id, message);
     return deleted;
   }
 
@@ -234,6 +247,16 @@ class CandidateCache {
     for (const [messageId, message] of this.items) {
       if (getPeer(message)?.key === peerKey) this.delete(messageId);
     }
+  }
+
+  mediaReferences() {
+    const references = [];
+    for (const message of this.items.values()) {
+      for (const element of (message?.elements || [])) {
+        if (element?.qqLocalRecallMedia) references.push(element.qqLocalRecallMedia);
+      }
+    }
+    return references;
   }
 
   get size() {

@@ -7,6 +7,7 @@ const {
 } = require('./core/media-store');
 const { RecallProcessor } = require('./core/processor');
 const { fetchQqMedia } = require('./core/qq-media-fetch');
+const { downloadRichMedia } = require('./core/qq-native-media');
 const { readSettings, writeSettings } = require('./core/settings');
 const { ConversationStore } = require('./core/store');
 const { isLocalStoragePath, writeStoragePath } = require('./core/storage-path');
@@ -78,7 +79,10 @@ function readCurrentQqVersion() {
   } catch { return ''; }
 }
 
-function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHtmlPath, managerPreloadPath, logger = console }) {
+function createPlugin({
+  electron, dataDir, storageConfigDir = dataDir, managerHtmlPath, managerPreloadPath,
+  logger = console, getQqSession = () => null,
+}) {
   const { BrowserWindow, ipcMain, dialog } = electron;
   const store = new ConversationStore(dataDir);
   const mediaStore = new MediaStore(dataDir);
@@ -93,6 +97,7 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
     : null;
   const processor = new RecallProcessor({ store, mediaStore, pttStore, videoStore, cacheLimit: 10000, preventSelf: settings.preventSelf, diagLog });
   const patchedContents = new WeakSet();
+  const prefetching = new Set();
   let managerWindow = null;
   let started = false;
 
@@ -196,6 +201,7 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
     });
     ipcMain.handle(CHANNELS.open, () => openManager());
     ipcMain.handle(CHANNELS.persistMedia, async (event, value) => {
+      try {
       const input = validatePersistedMediaInput(value);
       const element = processor.pendingMediaElement(input.messageId, input.mediaIndex);
       const pic = element.picElement;
@@ -238,6 +244,25 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
         reference: publicReference(reference),
         displayUrl: pathToAppImageUrl(displayPath),
       };
+      } catch (error) {
+        const sourceUrl = typeof value?.sourceUrl === 'string' ? value.sourceUrl : '';
+        const inputKind = sourceUrl.startsWith('appimg:')
+          ? 'appimg'
+          : sourceUrl.startsWith('https:')
+            ? 'https'
+            : value?.bytes
+              ? 'canvas'
+              : 'invalid';
+        const errorMessage = String(error?.message || error)
+          .replace(/https?:\/\/\S+/gi, '<url>')
+          .replace(/rkey=[^&\s]+/gi, 'rkey=<redacted>')
+          .slice(0, 300);
+        diagLog?.({
+          ev: 'persistMediaError', messageId: String(value?.messageId || ''),
+          mediaIndex: Number(value?.mediaIndex), inputKind, error: errorMessage,
+        });
+        throw error;
+      }
     });
     ipcMain.handle(CHANNELS.settings, () => ({ ...settings }));
     ipcMain.handle(CHANNELS.updateSettings, (_event, value) => {
@@ -294,21 +319,48 @@ function createPlugin({ electron, dataDir, storageConfigDir = dataDir, managerHt
     const originalSend = originalOwner.send;
     if (typeof originalSend !== 'function') return false;
 
+    function schedulePrefetch(candidates) {
+      if (!settings.networkMediaRecovery) return;
+      for (const candidate of candidates) {
+        const key = `${candidate.messageId}:${candidate.mediaIndex}`;
+        if (prefetching.has(key)) continue;
+        prefetching.add(key);
+        downloadRichMedia({ session: getQqSession(), candidate }).then(filePath => {
+          const stats = fs.statSync(filePath);
+          if (!stats.isFile()) throw new Error('QQ rich-media result is not a file');
+          if (stats.size > MAX_MEDIA_BYTES) throw new RangeError('media exceeds 20 MiB');
+          const reference = mediaStore.saveBytes(fs.readFileSync(filePath), '', false);
+          processor.attachPrefetchedMedia({
+            messageId: candidate.messageId, mediaIndex: candidate.mediaIndex, reference,
+          });
+          diagLog?.({ ev: 'picturePrefetch', messageId: candidate.messageId, mediaIndex: candidate.mediaIndex, ok: true });
+        }).catch(error => {
+          diagLog?.({
+            ev: 'picturePrefetch', messageId: candidate.messageId, mediaIndex: candidate.mediaIndex,
+            ok: false, error: String(error?.message || error).slice(0, 200),
+          });
+        }).finally(() => prefetching.delete(key));
+      }
+    }
+
     function patchedSend(channel, ...args) {
       let recoveredIds = [];
       let attemptedIds = [];
       let messageKinds = {};
       let recallNotices = {};
+      let prefetchCandidates = [];
       try {
         const processed = processor.processIpcArguments(args);
         recoveredIds = processed.recoveredIds;
         attemptedIds = processed.attemptedIds;
         messageKinds = processed.messageKinds;
         recallNotices = processed.recallNotices;
+        prefetchCandidates = processed.prefetchCandidates;
       } catch (error) {
         logger.error?.('[QQ Local Recall] IPC processing failed:', error);
       }
       const result = originalSend.call(contents, channel, ...args);
+      schedulePrefetch(prefetchCandidates);
       if (recoveredIds.length) {
         originalSend.call(contents, RECOVERED_CHANNEL, {
           messageIds: recoveredIds, attemptedIds, messageKinds, recallNotices,

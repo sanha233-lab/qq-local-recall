@@ -12,11 +12,11 @@
 ## Plugin audit boundary
 
 - `package.json` 没有 `dependencies` 或 `devDependencies`。
-- 只有 `src/core/qq-media-fetch.js` 可以调用注入的 `fetch`；其他 `src/` 继续禁止网络 API、HTTP/HTTPS/TCP/UDP 模块、子进程、`eval`、动态函数和原生 `.node/.dll` 引用。
-- 媒体请求只复用当前 QQ IPC 发送方的登录会话，不使用全局或 Node 请求；初始地址限定 HTTPS、443、`multimedia.nt.qq.com.cn`/`gchat.qpic.cn`、精确 `/download`、数字 `appid/spec`、非空 `rkey` 和匹配待处理元素的 `fileid`。
+- 只有 `src/core/qq-media-fetch.js` 可以调用注入的 `fetch`；其他 `src/` 继续禁止网络 API、HTTP/HTTPS/TCP/UDP 模块、子进程、`eval` 和动态函数。`src/core/qq-native-media.js` 仅允许识别固定 `wrapper.node` 文件名并包装 QQ 已加载的导出，不包含原生模块 `require()`；其他源码仍禁止 `.node/.dll` 引用。
+- 后台预取只调用当前 QQ 原生消息服务的 `downloadRichMedia`，请求身份来自已收到消息的 `msgId/chatType/peerUid/elementId`；完成事件必须同时匹配 `msgId` 与 `msgElementId`，30 秒超时并移除监听。完整 HTTPS 回源只复用当前 QQ IPC 发送方窗口的登录会话；初始地址限定 HTTPS、443、`multimedia.nt.qq.com.cn`/`gchat.qpic.cn`、精确 `/download`、数字 `appid/spec`、非空 `rkey` 和匹配待处理元素的 `fileid`，缺少 `rkey` 的相对地址不发起请求。
 - 最多跟随 2 次到 `.qq.com`、`.qpic.cn`、`.gtimg.cn` 的 HTTPS 重定向；单次 10 秒、响应 20 MiB，并按 GIF/PNG/JPEG/WebP magic bytes 验证。
 - 完整临时 URL、`fileid` 和 `rkey` 只存在于当前内存请求生命周期，不写入 JSON、媒体引用、日志或 IPC 返回值。
-- 诊断日志默认关闭：仅当记录目录存在 `ptt-debug.enabled` 标记文件时才写入本机 `ptt-debug.jsonl`（语音链路排查用），正式使用无需开启。
+- 诊断日志默认关闭：仅当记录目录存在 `ptt-debug.enabled` 标记文件时才写入本机 `ptt-debug.jsonl`。除语音/视频链路外，图片排查覆盖实时消息事件与全量消息列表，只记录候选文件是否存在、尺寸、URL 类型及必要参数是否存在、持久化错误类型；不记录图片内容、完整媒体 URL、`fileid` 或 `rkey` 值。正式使用无需开启。
 - 数据文件名由 SHA-256 生成，删除 API 只接受 `friend:` 或 `group:` 开头的会话键；存储路径只能通过主进程原生文件夹选择器修改。
 - 损坏的数据文件不会自动删除，只记录诊断并跳过。
 

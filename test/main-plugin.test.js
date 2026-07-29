@@ -193,6 +193,155 @@ test('Canvas media IPC rejects a 60x60 placeholder and persists a matching portr
   assert.equal(plugin.store.get('m1').message.elements[0].qqLocalRecallMedia.staticFallback, true);
 });
 
+test('main plugin prefetches a fresh unopened-chat picture through the QQ session', async () => {
+  const electron = fakeElectron();
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-main-'));
+  const downloadedPath = path.join(dataDir, 'qq-downloaded.gif');
+  fs.writeFileSync(downloadedPath, Buffer.from('GIF89a prefetched image', 'ascii'));
+  let listener;
+  const requests = [];
+  const service = {
+    addKernelMsgListener(value) { listener = value; return 1; },
+    removeKernelMsgListener() {},
+    downloadRichMedia(request) {
+      requests.push(request);
+      setImmediate(() => listener.onRichMediaDownloadComplete({
+        msgId: request.msgId, msgElementId: request.elementId, fileErrCode: 0, filePath: downloadedPath,
+      }));
+    },
+  };
+  const plugin = createPlugin({
+    electron, dataDir, managerHtmlPath: 'manager.html', managerPreloadPath: 'manager-preload.js',
+    getQqSession: () => ({ getMsgService: () => service }),
+  });
+  plugin.start();
+  const chat = fakeChatWindow();
+  plugin.onBrowserWindowCreated(chat);
+  const received = { cmdName: 'onMsgInfoListUpdate', payload: { msgList: [message([{
+    elementType: 2, elementId: 'element-1',
+    picElement: {
+      sourcePath: 'missing.png', picWidth: 320, picHeight: 240,
+      fileUuid: 'prefetch-file-1',
+    },
+  }], { msgTime: String(Math.floor(Date.now() / 1000)) })] } };
+
+  chat.webContents.send('qq-ipc', 'event', received);
+  await new Promise(resolve => setImmediate(resolve));
+  await new Promise(resolve => setImmediate(resolve));
+  const recalled = { cmdName: 'onMsgInfoListUpdate', payload: { msgList: [message([{
+    elementType: 8,
+    grayTipElement: { subElementType: 1, revokeElement: { isSelfOperate: false } },
+  }])] } };
+  chat.webContents.send('qq-ipc', 'event', recalled);
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].elementId, 'element-1');
+  assert.equal(plugin.store.get('m1').message.elements[0].qqLocalRecallMedia.mimeType, 'image/gif');
+  assert.match(recalled.payload.msgList[0].elements[0].picElement.sourcePath, /media[\\/][a-f0-9]{64}\.gif$/);
+});
+
+test('repeated full-list updates retain a prefetched picture without downloading it again', async () => {
+  const electron = fakeElectron();
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-main-'));
+  const downloadedPath = path.join(dataDir, 'qq-downloaded.gif');
+  fs.writeFileSync(downloadedPath, Buffer.from('GIF89a prefetched image', 'ascii'));
+  let listener;
+  let calls = 0;
+  const service = {
+    addKernelMsgListener(value) { listener = value; return 1; },
+    removeKernelMsgListener() {},
+    downloadRichMedia(request) {
+      calls += 1;
+      setImmediate(() => listener.onRichMediaDownloadComplete({
+        msgId: request.msgId, msgElementId: request.elementId, fileErrCode: 0, filePath: downloadedPath,
+      }));
+    },
+  };
+  const plugin = createPlugin({
+    electron, dataDir,
+    managerHtmlPath: 'manager.html', managerPreloadPath: 'manager-preload.js',
+    getQqSession: () => ({ getMsgService: () => service }),
+  });
+  plugin.start();
+  const chat = fakeChatWindow();
+  plugin.onBrowserWindowCreated(chat);
+  const freshMessage = () => message([{
+    elementType: 2, elementId: 'element-repeat',
+    picElement: { sourcePath: 'missing.png', fileUuid: 'prefetch-file-repeat' },
+  }], { msgTime: String(Math.floor(Date.now() / 1000)) });
+
+  chat.webContents.send('qq-ipc', 'event', { msgList: [freshMessage()] });
+  await new Promise(resolve => setImmediate(resolve));
+  chat.webContents.send('qq-ipc', 'event', { msgList: [freshMessage()] });
+  await new Promise(resolve => setImmediate(resolve));
+  const recalled = { cmdName: 'onMsgInfoListUpdate', payload: { msgList: [message([{
+    elementType: 8, grayTipElement: { subElementType: 1, revokeElement: { isSelfOperate: false } },
+  }])] } };
+  chat.webContents.send('qq-ipc', 'event', recalled);
+
+  assert.equal(calls, 1);
+  assert.ok(plugin.store.get('m1').message.elements[0].qqLocalRecallMedia);
+});
+
+test('a picture prefetch that finishes after recall persists the pending recovery', async () => {
+  const electron = fakeElectron();
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-main-'));
+  const downloadedPath = path.join(dataDir, 'qq-downloaded.gif');
+  fs.writeFileSync(downloadedPath, Buffer.from('GIF89a prefetched image', 'ascii'));
+  let listener;
+  let request;
+  const service = {
+    addKernelMsgListener(value) { listener = value; return 1; },
+    removeKernelMsgListener() {},
+    downloadRichMedia(value) { request = value; },
+  };
+  const plugin = createPlugin({
+    electron, dataDir,
+    managerHtmlPath: 'manager.html', managerPreloadPath: 'manager-preload.js',
+    getQqSession: () => ({ getMsgService: () => service }),
+  });
+  plugin.start();
+  const chat = fakeChatWindow();
+  plugin.onBrowserWindowCreated(chat);
+  chat.webContents.send('qq-ipc', 'event', { msgList: [message([{
+    elementType: 2, elementId: 'element-race',
+    picElement: { sourcePath: 'missing.png', fileUuid: 'prefetch-file-race' },
+  }], { msgTime: String(Math.floor(Date.now() / 1000)) })] });
+  const recalled = { cmdName: 'onMsgInfoListUpdate', payload: { msgList: [message([{
+    elementType: 8, grayTipElement: { subElementType: 1, revokeElement: { isSelfOperate: false } },
+  }])] } };
+  chat.webContents.send('qq-ipc', 'event', recalled);
+  listener.onRichMediaDownloadComplete({
+    msgId: request.msgId, msgElementId: request.elementId, fileErrCode: 0, filePath: downloadedPath,
+  });
+  await new Promise(resolve => setImmediate(resolve));
+
+  assert.ok(plugin.store.get('m1').message.elements[0].qqLocalRecallMedia);
+});
+
+test('rendered-media diagnostics record a rejected input without logging media URLs', async () => {
+  const electron = fakeElectron();
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-main-'));
+  fs.writeFileSync(path.join(dataDir, 'ptt-debug.enabled'), '');
+  const plugin = createPlugin({ electron, dataDir, managerHtmlPath: 'manager.html', managerPreloadPath: 'manager-preload.js' });
+  plugin.start();
+  primePending(plugin, { picWidth: 1320, picHeight: 1181, fileUuid: 'f1' });
+
+  await assert.rejects(electron.handlers.get('qq-local-recall:persist-rendered-media')({}, {
+    messageId: 'm1', mediaIndex: 0, mimeType: 'image/png',
+    bytes: new Uint8Array(pngWithDimensions(60, 60)), width: 60, height: 60,
+  }), /dimensions/);
+
+  const entries = fs.readFileSync(path.join(dataDir, 'ptt-debug.jsonl'), 'utf8')
+    .trim().split('\n').map(line => JSON.parse(line));
+  assert.deepEqual(entries.find(entry => entry.ev === 'persistMediaError'), {
+    t: entries.find(entry => entry.ev === 'persistMediaError').t,
+    ev: 'persistMediaError', messageId: 'm1', mediaIndex: 0,
+    inputKind: 'canvas', error: 'static fallback aspect ratio or dimensions mismatch',
+  });
+  assert.equal(JSON.stringify(entries).includes('rkey='), false);
+});
+
 test('HTTPS media IPC uses only the invoking QQ session and returns no temporary URL', async () => {
   const electron = fakeElectron();
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qq-local-recall-main-'));

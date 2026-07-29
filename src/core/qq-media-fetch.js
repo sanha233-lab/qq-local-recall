@@ -9,7 +9,9 @@ const MAX_REDIRECTS = 2;
 
 function parseInitialUrl(value, expectedFileUuid) {
   let url;
-  try { url = new URL(value); } catch { throw new TypeError('media URL is invalid'); }
+  try {
+    url = new URL(value);
+  } catch { throw new TypeError('media URL is invalid'); }
   if (url.protocol !== 'https:' || (url.port && url.port !== '443') || url.username || url.password) {
     throw new TypeError('media URL transport is invalid');
   }
@@ -44,7 +46,9 @@ async function requestOnce(fetch, url, timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url.href, { redirect: 'manual', signal: controller.signal });
+    const response = await fetch(url.href, {
+      redirect: 'manual', signal: controller.signal, credentials: 'include',
+    });
     return { response, controller, stop: () => clearTimeout(timer) };
   } catch {
     clearTimeout(timer);
@@ -82,7 +86,9 @@ async function readLimitedBody(response) {
   return Buffer.concat(chunks, total);
 }
 
-async function fetchQqMedia({ fetch, sourceUrl, expectedFileUuid, timeoutMs = DEFAULT_TIMEOUT_MS }) {
+async function fetchQqMedia({
+  fetch, sourceUrl, expectedFileUuid, timeoutMs = DEFAULT_TIMEOUT_MS,
+}) {
   if (typeof fetch !== 'function') throw new TypeError('session fetch is unavailable');
   let url = parseInitialUrl(sourceUrl, expectedFileUuid);
   for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects += 1) {
@@ -96,7 +102,7 @@ async function fetchQqMedia({ fetch, sourceUrl, expectedFileUuid, timeoutMs = DE
         url = parseRedirectUrl(location, url);
         continue;
       }
-      if (!response.ok) throw new Error('media HTTP status is invalid');
+      if (!response.ok) throw new Error(`media HTTP status ${Number(response.status) || 0}`);
       const bytes = await readLimitedBody(response);
       return { bytes, mimeType: sniffImage(bytes).mimeType };
     } catch (error) {

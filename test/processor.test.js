@@ -416,11 +416,19 @@ test('RecallProcessor atomically updates mixed text with multiple rendered media
 test('RecallProcessor resolves persisted media against the current root after restart', () => {
   const store = makeStore();
   const reference = mediaReference();
+  const existingThumb = path.join(store.rootDir, 'existing-thumb.gif');
+  fs.writeFileSync(existingThumb, 'thumb');
   const saved = record => store.save(record);
   saved({
     msgId: 'm1', peer: { key: 'friend:u1', type: 'friend', id: 'u1', name: '好友' }, recallTime: '2000',
     message: textMessage({ elements: [{
-      elementType: 2, picElement: { sourcePath: 'old-root.gif' }, qqLocalRecallMedia: reference,
+      elementType: 2,
+      picElement: { sourcePath: 'old-root.gif', thumbPath: new Map([[198, 'missing-thumb.gif']]) },
+      qqLocalRecallMedia: reference,
+    }, {
+      elementType: 2,
+      picElement: { sourcePath: 'old-root-2.gif', thumbPath: new Map([[198, existingThumb]]) },
+      qqLocalRecallMedia: reference,
     }] }),
   });
   const processor = new RecallProcessor({
@@ -433,6 +441,15 @@ test('RecallProcessor resolves persisted media against the current root after re
 
   assert.equal(fullList.msgList[0].elements[0].picElement.sourcePath, 'G:\\QQ\\media\\current.gif');
   assert.equal(fullList.msgList[0].elements[0].picElement.filePath, 'G:\\QQ\\media\\current.gif');
+  assert.equal(fullList.msgList[0].elements[0].picElement.transferStatus, 4);
+  assert.deepEqual(
+    [...fullList.msgList[0].elements[0].picElement.thumbPath],
+    [[0, 'G:\\QQ\\media\\current.gif']],
+  );
+  assert.deepEqual(
+    [...fullList.msgList[0].elements[1].picElement.thumbPath],
+    [[198, existingThumb]],
+  );
 });
 
 test('RecallProcessor drops damaged persisted media but keeps mixed message text', () => {
@@ -625,6 +642,63 @@ test('RecallProcessor replays pictures without a local file in the current sessi
   assert.equal(event.payload.msgList[0].elements[0].picElement.originImageUrl, originImageUrl);
   assert.equal(result.recallNotices.m1.memoryOnly, true);
   assert.equal(processor.store.get('m1'), undefined);
+});
+
+test('RecallProcessor diagnostics describe picture availability without logging its URL', () => {
+  const entries = [];
+  const processor = new RecallProcessor({ store: makeStore(), diagLog: entry => entries.push(entry) });
+  const originImageUrl = 'https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=f1&spec=0&rkey=temporary-secret';
+
+  processor.processEvent({ cmdName: 'onRecvMsg', payload: { msgList: [textMessage({
+    elements: [{ elementType: 2, picElement: {
+      sourcePath: 'missing.jpg', filePath: '', thumbPath: new Map([[0, 'missing-thumb.jpg']]),
+      picWidth: 1320, picHeight: 1181, fileSize: '1603007', fileUuid: 'f1', originImageUrl,
+    } }],
+  })] } });
+
+  const picture = entries.find(entry => entry.ev === 'pictureCandidate');
+  assert.deepEqual(picture, {
+    ev: 'pictureCandidate', command: 'onRecvMsg', messageId: 'm1',
+    sourceExists: false, fileExists: false, existingThumbs: 0,
+    width: 1320, height: 1181, fileSize: '1603007',
+    hasFileUuid: true, urlState: 'https', urlHasFileId: true, urlHasRkey: true,
+  });
+  assert.equal(JSON.stringify(entries).includes('temporary-secret'), false);
+});
+
+test('RecallProcessor diagnostics cover pictures received through a full message list', () => {
+  const entries = [];
+  const processor = new RecallProcessor({ store: makeStore(), diagLog: entry => entries.push(entry) });
+  const originImageUrl = 'https://multimedia.nt.qq.com.cn/download?fileid=f2&rkey=full-list-secret';
+
+  processor.processFullList({ msgList: [textMessage({
+    elements: [{ elementType: 2, picElement: {
+      picWidth: 864, picHeight: 1920, fileUuid: 'f2', originImageUrl,
+    } }],
+  })] });
+
+  const picture = entries.find(entry => entry.ev === 'pictureCandidate');
+  assert.equal(picture.command, 'fullList');
+  assert.equal(picture.messageId, 'm1');
+  assert.equal(picture.urlState, 'https');
+  assert.equal(picture.hasFileUuid, true);
+  assert.equal(JSON.stringify(entries).includes('full-list-secret'), false);
+});
+
+test('RecallProcessor emits native picture identity for a fresh unopened-chat picture', () => {
+  const processor = new RecallProcessor({ store: makeStore() });
+  const result = processor.processFullList({ msgList: [textMessage({
+    msgTime: String(Math.floor(Date.now() / 1000)),
+    chatType: 2, peerUid: 'group-1',
+    elements: [{
+      elementType: 2, elementId: 'element-1',
+      picElement: { sourcePath: 'missing.jpg', fileUuid: 'file-1' },
+    }],
+  })] });
+
+  assert.deepEqual(result.prefetchCandidates, [{
+    messageId: 'm1', mediaIndex: 0, chatType: 2, peerUid: 'group-1', elementId: 'element-1',
+  }]);
 });
 
 test('RecallProcessor replays a memory-only picture after the conversation is reopened', () => {

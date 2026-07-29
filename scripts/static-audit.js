@@ -5,6 +5,7 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '..', 'src');
 const controlledFetch = path.join(root, 'core', 'qq-media-fetch.js');
+const nativeMediaBridge = path.join(root, 'core', 'qq-native-media.js');
 const forbidden = [
   { name: 'network module', pattern: /require\(['"](?:node:)?(?:http|https|net|tls|dgram)['"]\)/ },
   { name: 'network API', pattern: /\b(?:fetch|WebSocket|EventSource)\s*\(/ },
@@ -27,6 +28,7 @@ for (const file of files(root)) {
   const content = fs.readFileSync(file, 'utf8');
   for (const rule of forbidden) {
     if (file === controlledFetch && (rule.name === 'network API' || rule.name === 'network URL literal')) continue;
+    if (file === nativeMediaBridge && rule.name === 'native module reference') continue;
     if (rule.pattern.test(content)) failures.push(`${path.relative(root, file)}: ${rule.name}`);
   }
 }
@@ -51,8 +53,24 @@ for (const [name, pattern] of requiredFetchGuards) {
   if (!pattern.test(fetchSource)) failures.push(`core\\qq-media-fetch.js: missing ${name} guard`);
 }
 
+const nativeMediaSource = fs.readFileSync(nativeMediaBridge, 'utf8');
+const requiredNativeGuards = [
+  ['fixed wrapper name', /baseName\s*!==\s*['"]wrapper\.node/],
+  ['QQ-owned dlopen first', /originalDlopen\.call\(this, module, filename, flags\)/],
+  ['message id match', /data\?\.msgId[\s\S]*candidate\.messageId/],
+  ['element id match', /data\?\.msgElementId[\s\S]*candidate\.elementId/],
+  ['30 second timeout', /DEFAULT_TIMEOUT_MS\s*=\s*30_000/],
+  ['listener cleanup', /removeKernelMsgListener\(listenerId\)/],
+];
+for (const [name, pattern] of requiredNativeGuards) {
+  if (!pattern.test(nativeMediaSource)) failures.push(`core\\qq-native-media.js: missing ${name} guard`);
+}
+if (/require\(['"][^'"]+\.(?:node|dll)/i.test(nativeMediaSource)) {
+  failures.push('core\\qq-native-media.js: must not load a native module');
+}
+
 if (failures.length) {
   console.error(failures.join('\n'));
   process.exit(1);
 }
-console.log('Static audit passed: only the constrained QQ media module uses injected fetch; all required request guards are present.');
+console.log('Static audit passed: QQ HTTPS fetch and native rich-media bridges are constrained; all required guards are present.');
