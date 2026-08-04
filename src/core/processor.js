@@ -127,7 +127,8 @@ class RecallProcessor {
     if (!event || typeof event !== 'object') return result;
     const command = String(event.cmdName || '');
     const payload = event.payload || {};
-    const messages = Array.isArray(payload.msgList)
+    const useMessageList = Array.isArray(payload.msgList) && payload.msgList.length > 0;
+    const messages = useMessageList
       ? payload.msgList
       : payload.msgRecord
         ? [payload.msgRecord]
@@ -149,7 +150,10 @@ class RecallProcessor {
       }
       const recovered = this.restore(message);
       if (!recovered) continue;
-      messages[index] = recovered;
+      if (useMessageList) payload.msgList[index] = recovered;
+      if (payload.msgRecord && String(payload.msgRecord.msgId || '') === String(message.msgId || '')) {
+        payload.msgRecord = recovered;
+      }
       const recoveredId = String(recovered.msgId);
       result.recoveredIds.push(recoveredId);
       result.messageKinds[recoveredId] = recovered.elements.some(el => {
@@ -215,8 +219,10 @@ class RecallProcessor {
         if (Array.isArray(val)) { for (const v of val) scan(v, depth + 1); return; }
         if (Array.isArray(val.elements) && val.elements.length > 0) {
           const types = val.elements.map(e => ({ et: e?.elementType, k: Object.keys(e || {}) }));
-          const isRecall = val.elements.some(e => e?.grayTipElement?.revokeElement !== undefined);
-          const hasPttLike = types.some(t => Number(t.et) === 3 || (t.k || []).some(k => /ptt|voice/i.test(k)));
+          const isRecall = val.elements.some(e => e?.grayTipElement?.revokeElement != null);
+          const hasPttLike = val.elements.some(e => (
+            Number(e?.elementType) === 3 || Number(e?.elementType) === 4 || e?.pttElement != null
+          ));
           if (isRecall) {
             const grayEl = val.elements.find(e => e?.grayTipElement);
             this._log({ ev: 'recallNotice', msgId: val.msgId, chatType: val.chatType,
@@ -226,8 +232,7 @@ class RecallProcessor {
             this._log({ ev: 'voiceLike', msgId: val.msgId, chatType: val.chatType,
               peerUid: val.peerUid, senderUid: val.senderUid, types });
           }
-          const hasVideoLike = types.some(t => Number(t.et) === 5
-            || (t.k || []).some(k => /video/i.test(k)));
+          const hasVideoLike = val.elements.some(e => Number(e?.elementType) === 5 || e?.videoElement != null);
           if (hasVideoLike) {
             const videoEl = val.elements.find(e => e?.videoElement)?.videoElement;
             // Record which referenced paths exist right now; the files may be

@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.5.0] - 2026-08-04
+
+### Fixed
+
+- QQ `9.9.33-51802` composite messages, group single-record recall events, mixed `msgList`/`msgRecord` payloads, and nullable diagnostic fields.
+- Added a future-adaptation runbook covering IPC shape capture, `elementType: 8` normalization, privacy-safe diagnostics, tests, packaging, and rollback.
+
+### Verification
+
+- `node --test`: 177 tests passed.
+- `npm run check`: passed.
+- QQ `9.9.33-51802` real group-chat recall: recovered content remained visible after the sender withdrew it.
+
 ## [1.4.10] - 2026-07-29
 
 ### Fixed

@@ -133,6 +133,39 @@ test('sanitizeMessage keeps local picture rendering fields without persisting it
   assert.equal(JSON.stringify(sanitized).includes('/remote/path'), false);
 });
 
+test('sanitizeMessage expands QQ 9.9.33 composite elementType 8 records', () => {
+  const sanitized = sanitizeMessage(textMessage({ elements: [{
+    elementType: 8,
+    elementId: 'composite-1',
+    textElement: { content: 'hello' },
+    faceElement: { faceIndex: 14 },
+    arkElement: { bytesData: '{}' },
+  }] }));
+
+  assert.deepEqual(sanitized.elements.map(item => item.elementType), [1, 6]);
+  assert.equal(sanitized.elements[0].elementId, 'composite-1');
+  assert.equal(sanitized.elements[1].faceElement.faceIndex, 14);
+});
+
+test('sanitizeMessage emits one QQ 9.9.33 voice element from a composite record', () => {
+  const sanitized = sanitizeMessage(textMessage({ elements: [{
+    elementType: 8,
+    pttElement: { filePath: 'pending.amr' },
+  }] }), { allowMissingMedia: true });
+
+  assert.deepEqual(sanitized.elements.map(item => item.elementType), [4]);
+  assert.equal(sanitized.elements[0].pttElement.filePath, 'pending.amr');
+});
+
+test('sanitizeMessage keeps a null QQ 9.9.33 composite voice candidate', () => {
+  const sanitized = sanitizeMessage(textMessage({ elements: [{
+    elementType: 8,
+    pttElement: null,
+  }] }), { requireLocalMedia: false });
+
+  assert.deepEqual(sanitized.elements, [{ elementType: 4, pttElement: null }]);
+});
+
 test('sanitizeMessage can retain a temporary picture URL for current-session recovery only', () => {
   const originImageUrl = 'https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=f1&spec=0&rkey=temporary';
   const message = textMessage({ elements: [{

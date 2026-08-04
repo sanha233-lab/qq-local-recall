@@ -644,6 +644,54 @@ test('RecallProcessor replays pictures without a local file in the current sessi
   assert.equal(processor.store.get('m1'), undefined);
 });
 
+test('RecallProcessor writes a recovered group msgRecord back to its IPC payload', () => {
+  const store = makeStore();
+  const processor = new RecallProcessor({ store });
+  processor.processEvent({ cmdName: 'onRecvMsg', payload: { msgList: [textMessage({
+    chatType: 2,
+    peerUid: 'group-1',
+  })] } });
+  const event = { cmdName: 'onActiveMsgInfoUpdate', payload: { msgRecord: recallMessage({
+    chatType: 2,
+    peerUid: 'group-1',
+  }) } };
+
+  const result = processor.processEvent(event);
+
+  assert.deepEqual(result.recoveredIds, ['m1']);
+  assert.equal(event.payload.msgRecord.elements[0].textElement.content, 'hello');
+  assert.equal(event.payload.msgRecord.qqLocalRecall.originalMessageId, 'm1');
+});
+
+test('RecallProcessor prefers a populated msgRecord over an empty QQ message list', () => {
+  const store = makeStore();
+  const processor = new RecallProcessor({ store });
+  processor.processEvent({ cmdName: 'onRecvMsg', payload: { msgList: [textMessage()] } });
+  const event = { cmdName: 'onActiveMsgInfoUpdate', payload: {
+    msgList: [],
+    msgRecord: recallMessage(),
+  } };
+
+  processor.processEvent(event);
+
+  assert.equal(event.payload.msgRecord.elements[0].textElement.content, 'hello');
+});
+
+test('RecallProcessor updates both QQ group payload representations', () => {
+  const store = makeStore();
+  const processor = new RecallProcessor({ store });
+  processor.processEvent({ cmdName: 'onRecvMsg', payload: { msgList: [textMessage()] } });
+  const event = { cmdName: 'onActiveMsgInfoUpdate', payload: {
+    msgList: [recallMessage()],
+    msgRecord: recallMessage(),
+  } };
+
+  processor.processEvent(event);
+
+  assert.equal(event.payload.msgList[0].elements[0].textElement.content, 'hello');
+  assert.equal(event.payload.msgRecord.elements[0].textElement.content, 'hello');
+});
+
 test('RecallProcessor diagnostics describe picture availability without logging its URL', () => {
   const entries = [];
   const processor = new RecallProcessor({ store: makeStore(), diagLog: entry => entries.push(entry) });
@@ -664,6 +712,22 @@ test('RecallProcessor diagnostics describe picture availability without logging 
     hasFileUuid: true, urlState: 'https', urlHasFileId: true, urlHasRkey: true,
   });
   assert.equal(JSON.stringify(entries).includes('temporary-secret'), false);
+});
+
+test('RecallProcessor diagnostics ignore null media fields exposed by QQ 9.9.33', () => {
+  const entries = [];
+  const processor = new RecallProcessor({ store: makeStore(), diagLog: entry => entries.push(entry) });
+  const message = textMessage({ elements: [{
+    elementType: 1,
+    textElement: { content: 'plain text' },
+    pttElement: null,
+    videoElement: null,
+    grayTipElement: { revokeElement: null },
+  }] });
+
+  processor.processIpcArguments([{ cmdName: 'onRecvMsg', payload: { msgList: [message] } }]);
+
+  assert.equal(entries.some(entry => ['voiceLike', 'videoLike', 'recallNotice'].includes(entry.ev)), false);
 });
 
 test('RecallProcessor diagnostics cover pictures received through a full message list', () => {

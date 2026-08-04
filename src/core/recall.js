@@ -62,6 +62,24 @@ function hasLocalMarketFace(face) {
     .some(file => typeof file === 'string' && file.length > 0 && fs.existsSync(file));
 }
 
+function expandElements(elements) {
+  const expanded = [];
+  for (const element of elements || []) {
+    if (Number(element?.elementType) !== 8) {
+      expanded.push(element);
+      continue;
+    }
+    // QQ 9.9.33 wraps several logical elements in one elementType=8 record.
+    const emittedKeys = new Set();
+    for (const [elementType, key] of SUPPORTED_ELEMENT_KEYS) {
+      if (!(key in element) || emittedKeys.has(key)) continue;
+      emittedKeys.add(key);
+      expanded.push({ ...element, elementType: key === 'pttElement' ? 4 : elementType, [key]: element[key] });
+    }
+  }
+  return expanded;
+}
+
 // A video counts as locally available with either the downloaded body or its
 // thumbnail; unplayed videos only ever have the thumbnail on disk.
 function hasLocalVideo(video) {
@@ -84,7 +102,7 @@ function sanitizeMessage(message, {
     return null;
   }
 
-  const elements = message.elements.flatMap(element => {
+  const elements = expandElements(message.elements).flatMap(element => {
     const key = SUPPORTED_ELEMENT_KEYS.get(Number(element?.elementType));
     if (!key) return [];
     // pttElement can arrive as null initially; still cache the element so recall can be prevented

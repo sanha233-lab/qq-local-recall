@@ -69,7 +69,7 @@ function publicReference(reference) {
   };
 }
 
-const VERIFIED_QQ_VERSION = '9.9.32-51246';
+const VERIFIED_QQ_VERSION = '9.9.33-51802';
 const MAX_PREVIEW_BYTES = 8 * 1024 * 1024;
 
 function readCurrentQqVersion() {
