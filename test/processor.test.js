@@ -98,6 +98,46 @@ test('recall of an unknown message never restores another message from the same 
   assert.equal(store.get('v1'), undefined);
 });
 
+test('a group text recall without an original id uses one matching sender candidate', () => {
+  const store = makeStore();
+  const processor = new RecallProcessor({ store });
+  processor.processEvent({ cmdName: 'onRecvActiveMsg', payload: { msgList: [textMessage({
+    msgId: 'original', chatType: 2, peerUid: 'group-1', senderUid: 'sender-1',
+  })] } });
+
+  const event = { cmdName: 'onActiveMsgInfoUpdate', payload: { msgList: [recallMessage({
+    msgId: 'gray-tip', chatType: 2, peerUid: 'group-1',
+    elements: [{ elementType: 8, grayTipElement: { subElementType: 1, revokeElement: {
+      isSelfOperate: false, origMsgSenderUid: 'sender-1',
+    } } }],
+  })] } };
+
+  const result = processor.processEvent(event);
+
+  assert.deepEqual(result.recoveredIds, ['original']);
+  assert.equal(event.payload.msgList[0].elements[0].textElement.content, 'hello');
+});
+
+test('a group recall without an original id rejects ambiguous sender candidates', () => {
+  const store = makeStore();
+  const processor = new RecallProcessor({ store });
+  processor.processEvent({ cmdName: 'onRecvActiveMsg', payload: { msgList: [
+    textMessage({ msgId: 'first', chatType: 2, peerUid: 'group-1', senderUid: 'sender-1' }),
+    textMessage({ msgId: 'second', chatType: 2, peerUid: 'group-1', senderUid: 'sender-1' }),
+  ] } });
+  const event = { cmdName: 'onActiveMsgInfoUpdate', payload: { msgList: [recallMessage({
+    msgId: 'gray-tip', chatType: 2, peerUid: 'group-1',
+    elements: [{ elementType: 8, grayTipElement: { subElementType: 1, revokeElement: {
+      isSelfOperate: false, origMsgSenderUid: 'sender-1',
+    } } }],
+  })] } };
+
+  const result = processor.processEvent(event);
+
+  assert.deepEqual(result.recoveredIds, []);
+  assert.ok(event.payload.msgList[0].elements[0].grayTipElement);
+});
+
 test('a voice recall matching the exact message id still recovers the voice', () => {
   const store = makeStore();
   const processor = new RecallProcessor({ store });
@@ -690,6 +730,25 @@ test('RecallProcessor updates both QQ group payload representations', () => {
 
   assert.equal(event.payload.msgList[0].elements[0].textElement.content, 'hello');
   assert.equal(event.payload.msgRecord.elements[0].textElement.content, 'hello');
+});
+
+test('RecallProcessor processes a group recall record beside unrelated list messages', () => {
+  const store = makeStore();
+  const processor = new RecallProcessor({ store });
+  processor.processEvent({ cmdName: 'onRecvActiveMsg', payload: { msgList: [textMessage({
+    chatType: 2,
+    peerUid: 'group-1',
+  })] } });
+  const event = { cmdName: 'onActiveMsgInfoUpdate', payload: {
+    msgList: [textMessage({ msgId: 'unrelated' })],
+    msgRecord: recallMessage({ chatType: 2, peerUid: 'group-1' }),
+  } };
+
+  const result = processor.processEvent(event);
+
+  assert.deepEqual(result.recoveredIds, ['m1']);
+  assert.equal(event.payload.msgRecord.elements[0].textElement.content, 'hello');
+  assert.equal(event.payload.msgList[0].msgId, 'unrelated');
 });
 
 test('RecallProcessor diagnostics describe picture availability without logging its URL', () => {

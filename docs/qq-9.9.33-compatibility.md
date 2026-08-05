@@ -22,14 +22,20 @@ the recovery logic. The 9.9.33 update required these specific compatibility rule
 
 1. Normal group messages arrive through `nodeIKernelMsgListener/onRecvActiveMsg`.
 2. Group recall updates arrive through `nodeIKernelMsgListener/onActiveMsgInfoUpdate`.
-3. A recall payload can contain both a populated `msgList` and a `msgRecord`; write
-   the recovered object back to both representations when their message IDs match.
-4. QQ can represent one logical message as `elementType: 8` with child fields such
+3. A recall payload can contain both a populated `msgList` and a `msgRecord`. They
+   are not alternatives: the list can contain unrelated messages while the recall
+   exists only in `msgRecord`. Process both, and write the recovered object back to
+   every representation whose message ID matches without changing unrelated items.
+4. A group-owner self-recall can omit both `origMsgId` and `origMsgUid`, while its
+   outer gray-tip ID differs from the original text or picture. An ID-less fallback
+   must require exactly one same-group, same-sender text/picture candidate. Reject
+   ambiguous candidates, and keep voice recovery on exact message IDs.
+5. QQ can represent one logical message as `elementType: 8` with child fields such
    as `textElement`, `faceElement`, `picElement`, `pttElement`, and `videoElement`.
    Expand those children once before caching. Map a composite voice to one canonical
    `elementType: 4` and retain a `pttElement: null` placeholder until its download
    event supplies the local file.
-5. QQ attaches nullable media fields to ordinary elements. Diagnostics must test
+6. QQ attaches nullable media fields to ordinary elements. Diagnostics must test
    field values, not only property names, or every message will be logged as voice
    and video.
 

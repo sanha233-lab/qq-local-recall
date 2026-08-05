@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1] - 2026-08-05
+
+### Fixed
+
+- Group-owner and administrator recalls now process an independent `msgRecord` even when the same IPC payload contains a non-empty `msgList` of unrelated messages.
+- Group-owner self-recalls whose gray tip omits the original message ID now recover one unique same-group, same-sender text or picture candidate. Ambiguous candidates and voice messages still require an exact ID.
+
 ## [1.5.0] - 2026-08-04
 
 ### Fixed

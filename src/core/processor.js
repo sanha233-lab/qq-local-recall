@@ -127,19 +127,22 @@ class RecallProcessor {
     if (!event || typeof event !== 'object') return result;
     const command = String(event.cmdName || '');
     const payload = event.payload || {};
-    const useMessageList = Array.isArray(payload.msgList) && payload.msgList.length > 0;
-    const messages = useMessageList
-      ? payload.msgList
-      : payload.msgRecord
-        ? [payload.msgRecord]
-        : [];
+    const listMessages = Array.isArray(payload.msgList) ? payload.msgList : [];
+    const entries = listMessages.map((message, index) => ({ message, index }));
+    if (payload.msgRecord) {
+      const recordId = String(payload.msgRecord.msgId || '');
+      const representedByList = listMessages.some(message => (
+        getRecallInfo(message) && String(message.msgId || '') === recordId
+      ));
+      if (!representedByList) entries.push({ message: payload.msgRecord, record: true });
+    }
 
     if (!/(onRecvMsg|onRecvActiveMsg|onAddSendMsg|onMsgInfoListUpdate|onActiveMsgInfoUpdate)/.test(command)) {
       return result;
     }
 
-    for (let index = 0; index < messages.length; index += 1) {
-      const message = messages[index];
+    for (const entry of entries) {
+      const { message } = entry;
       if (!getRecallInfo(message)) {
         if (this._diagLog && /^(onRecvMsg|onRecvActiveMsg|onAddSendMsg)$/.test(command)) {
           this._logPictureCandidates(message, command);
@@ -150,9 +153,16 @@ class RecallProcessor {
       }
       const recovered = this.restore(message);
       if (!recovered) continue;
-      if (useMessageList) payload.msgList[index] = recovered;
+      if (entry.index !== undefined) payload.msgList[entry.index] = recovered;
       if (payload.msgRecord && String(payload.msgRecord.msgId || '') === String(message.msgId || '')) {
         payload.msgRecord = recovered;
+      }
+      if (entry.record) {
+        for (let index = 0; index < listMessages.length; index += 1) {
+          if (String(listMessages[index]?.msgId || '') === String(message.msgId || '')) {
+            payload.msgList[index] = recovered;
+          }
+        }
       }
       const recoveredId = String(recovered.msgId);
       result.recoveredIds.push(recoveredId);
@@ -354,7 +364,16 @@ class RecallProcessor {
     if (!info || (info.isSelfOperate === true && !this.preventSelf)) return null;
     const messageId = getOriginalMessageId(recallMessage, info);
     const stored = this.store.get(messageId);
-    const cached = this.cache.get(messageId);
+    let cached = this.cache.get(messageId);
+    let resolvedMessageId = messageId;
+
+    if (!cached && !stored && !info.origMsgId && !info.origMsgUid) {
+      cached = this.findUniqueTextPictureCandidate(recallMessage, info);
+      if (cached) {
+        resolvedMessageId = String(cached.msgId);
+        if (this._diagLog) this._log({ ev: 'restoreFallback', kind: 'text-picture' });
+      }
+    }
 
     this._log({ ev: 'restore', messageId, hasCached: !!cached, hasStored: !!stored,
       origMsgId: info.origMsgId, origMsgSenderUid: info.origMsgSenderUid,
@@ -364,7 +383,31 @@ class RecallProcessor {
     // A "latest voice from the same sender" fallback used to live here; field
     // diagnostics showed 130 of its 131 candidate hits pointed at a different
     // message than the one recalled, so it only ever misattributed content.
-    return this.restoreWithId(recallMessage, info, messageId, cached, stored);
+    return this.restoreWithId(recallMessage, info, resolvedMessageId, cached, stored);
+  }
+
+  findUniqueTextPictureCandidate(recallMessage, recallInfo) {
+    const senderId = String(recallInfo?.origMsgSenderUid || '');
+    if (!senderId) return null;
+    const recallPeers = [recallMessage?.peerUid, recallMessage?.peerUin]
+      .filter(value => value !== undefined && value !== null && String(value) !== '')
+      .map(String);
+    const candidates = [...this.cache.items.values()].filter(candidate => {
+      if (Number(candidate?.chatType) !== 2) return false;
+      const senderMatches = [candidate?.senderUid, candidate?.senderUin]
+        .filter(value => value !== undefined && value !== null && String(value) !== '')
+        .map(String)
+        .includes(senderId);
+      if (!senderMatches) return false;
+      const candidatePeers = [candidate?.peerUid, candidate?.peerUin]
+        .filter(value => value !== undefined && value !== null && String(value) !== '')
+        .map(String);
+      if (recallPeers.length && candidatePeers.length
+        && !recallPeers.some(peer => candidatePeers.includes(peer))) return false;
+      return (candidate.elements || []).some(element => [1, 2, 6, 7, 11]
+        .includes(Number(element?.elementType)));
+    });
+    return candidates.length === 1 ? candidates[0] : null;
   }
 
   restoreWithId(recallMessage, info, messageId, cached, stored) {
@@ -377,6 +420,7 @@ class RecallProcessor {
     const original = currentSessionOriginal || persistableOriginal;
     const recovered = recoverRecall(recallMessage, original, { preventSelf: this.preventSelf });
     if (!recovered) return null;
+    recovered.qqLocalRecall.originalMessageId = messageId;
 
     // Attach saved PTT file path if available
     const pttDownload = this.pttDownloads.get(messageId);
@@ -457,6 +501,7 @@ class RecallProcessor {
     if (!stored && peer) {
       const persistable = recoverRecall(recallMessage, persistableOriginal, { preventSelf: this.preventSelf });
       if (persistable) {
+        persistable.qqLocalRecall.originalMessageId = messageId;
         if (pttDownload) {
           for (const element of (persistable.elements || [])) {
             const et = Number(element?.elementType);
