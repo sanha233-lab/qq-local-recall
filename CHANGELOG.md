@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.5.2] - 2026-08-13
+
+### Compatibility
+
+- Updated the verified Windows x64 QQ baseline from `9.9.33-51802` to `9.9.33-52074`; the official ASAR entry remains unchanged and the installer now verifies the new ASAR SHA-256.
+
 ## [1.5.1] - 2026-08-05
 
 ### Fixed

@@ -4,12 +4,12 @@
 
 - Windows x64
 - QQ installation root: auto-detected; use `-QQInstallPath` to override
-- QQ kernel: `9.9.33-51802`
+- QQ kernel: `9.9.33-52074`
 - LiteLoader destination: `%USERPROFILE%\Documents\LiteLoaderQQNT`
 
 ## Install
 
-完全退出所有 QQ 进程，然后在交付目录运行。脚本会自动检查常见 QQ 目录和 Windows 卸载注册表，只接受版本为 `9.9.33-51802` 的候选目录：
+完全退出所有 QQ 进程，然后在交付目录运行。脚本会自动检查常见 QQ 目录和 Windows 卸载注册表，只接受版本为 `9.9.33-52074` 的候选目录：
 
 正式交付提供基础插件 ZIP、源码 ZIP、完整 installer ZIP、安装/回滚脚本、`vendor` 和 `SHA256SUMS.txt`，不生成朋友分发包；仓库内旧朋友包仅作为历史版本保留。发布目录的校验单包含三个 ZIP 及安装组成文件，installer 内置的校验单用于核对其自身包含的插件、脚本和 vendor 文件。
 

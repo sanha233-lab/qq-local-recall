@@ -119,13 +119,13 @@ npm run check
 10. 在管理窗口修改记录目录，确认已有记录迁移、重启 QQ 后仍从新目录读取。
 11. 使用新建测试记录验证共享媒体在删除一个会话后保留、删除最后引用后清理，不操作已有正式记录。
 
-## QQ 9.9.33-51802 compatibility
+## QQ 9.9.33-52074 compatibility
 
-- Dry Run 必须识别 `9.9.33-51802`，并确认官方入口为 `./application.asar/app_launcher/index.js`。
-- `application.asar` 必须匹配已验证的 51802 SHA-256；脚本不修改 ASAR，也不替换 `QQ.exe`。
+- Dry Run 必须识别 `9.9.33-52074`，并确认官方入口为 `./application.asar/app_launcher/index.js`。
+- `application.asar` 必须匹配已验证的 52074 SHA-256；脚本不修改 ASAR，也不替换 `QQ.exe`。
 - LiteLoader 启动链先加载本地入口，再转发到 ASAR 内的官方 `app_launcher/index.js`。
 - 实际安装前备份 `package.json`、已有本地入口、桥接和插件；安装异常调用回滚脚本恢复备份。
-- 2026-08-04 实机验证：177 项 Node 测试、静态审核、包校验与 Dry Run 通过；好友和群聊撤回均保留原内容。
+- 2026-08-13 实机验证：180 项 Node 测试、静态审核、包校验与 Dry Run 通过；QQ 9.9.33-52074 的好友和群聊文字撤回均保留原内容。
 - 群聊验证覆盖同时包含 `msgList` 与 `msgRecord` 的更新事件，两处均按相同消息 ID 回写恢复对象。
 
 ## Local installation evidence, 2026-07-13

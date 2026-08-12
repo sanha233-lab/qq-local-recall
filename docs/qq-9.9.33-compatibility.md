@@ -1,6 +1,6 @@
-# QQ 9.9.33-51802 Compatibility
+# QQ 9.9.33-52074 Compatibility
 
-The current release targets Windows x64 QQ `9.9.33-51802`.
+The current compatibility baseline targets Windows x64 QQ `9.9.33-52074`.
 
 The installer verifies the official entry point `./application.asar/app_launcher/index.js`
 and the SHA-256 of the versioned `application.asar` before writing the LiteLoader
