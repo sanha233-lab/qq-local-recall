@@ -1,8 +1,8 @@
 # QQ 本地防撤回部署
 
-面向 Windows x64 QQ `9.9.33-52074` 的 LiteLoaderQQNT 插件。插件只处理本机已经收到的消息，不修改 QQ 服务器状态或网络协议。
+面向 Windows x64 QQ `9.9.33-52230` 的 LiteLoaderQQNT 插件。插件只处理本机已经收到的消息，不修改 QQ 服务器状态或网络协议。
 
-> 最新版本：**1.5.2**。查看 [更新日志](CHANGELOG.md) 或 [GitHub Releases](https://github.com/sanha233-lab/qq-local-recall/releases)。
+> 最新版本：**1.5.3**。查看 [更新日志](CHANGELOG.md) 或 [GitHub Releases](https://github.com/sanha233-lab/qq-local-recall/releases)。
 
 ## 功能
 
@@ -29,7 +29,7 @@
 
 ## 安装
 
-前提：Windows x64 QQ `9.9.33-52074`。从 [Releases](https://github.com/sanha233-lab/qq-local-recall/releases/latest) 下载对应附件：
+前提：Windows x64 QQ `9.9.33-52230`。从 [Releases](https://github.com/sanha233-lab/qq-local-recall/releases/latest) 下载对应附件：
 
 - **已安装 LiteLoaderQQNT**：下载 `QQ-Local-Recall-vX.Y.Z.zip`，完全退出 QQ，删除 LiteLoaderQQNT `plugins` 目录中的旧插件文件夹（如有），放入解压出的 `QQ-Local-Recall` 文件夹，重新启动 QQ。升级同理；已保存的撤回记录在插件数据目录中，不会丢失。
 - **未安装 LiteLoaderQQNT**：下载 `QQ-Local-Recall-vX.Y.Z-installer.zip`，解压后完全退出 QQ，以 PowerShell 运行其中的 `install.ps1`（自动安装 LiteLoaderQQNT、加载桥接和本插件，不替换 `QQ.exe`）；恢复原状运行 `rollback.ps1`。

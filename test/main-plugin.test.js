@@ -523,7 +523,7 @@ test('qq-version IPC reports the verified version baseline', async () => {
 
   const info = await electron.handlers.get('qq-local-recall:qq-version')({});
 
-  assert.equal(info.verified, '9.9.33-52074');
+  assert.equal(info.verified, '9.9.33-52230');
   assert.equal(typeof info.current, 'string');
 });
 

@@ -16,7 +16,7 @@ test('install.ps1 auto-detects the installed QQ directory during DryRun', () => 
   const output = `${result.stdout || ''}\n${result.stderr || ''}`;
   assert.equal(result.status, 0, output);
   assert.match(output, /Auto-detected QQ path:/);
-  assert.match(output, /QQ version:\s+9\.9\.33-52074/);
+  assert.match(output, /QQ version:\s+9\.9\.33-52230/);
   assert.match(output, /Official entry:\s+\.\/application\.asar\/app_launcher\/index\.js/);
   assert.match(output, /QQ\.exe replacement:\s+disabled/);
 });
